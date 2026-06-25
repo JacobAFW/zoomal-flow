@@ -1,0 +1,100 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+description: Data-agnostic pop-gen pipeline config schema. Validated at workflow start.
+type: object
+required: [cohort, reference, metadata, controls, qc, compute, paths]
+additionalProperties: true
+
+properties:
+
+  cohort:
+    type: object
+    required: [name, input_type, vcf]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        minLength: 1
+        description: Cohort label, used in output paths and report titles.
+      input_type:
+        type: string
+        enum: [wgs, microhap]
+        description: Selects which QC sub-rules file is included (qc_wgs.smk vs qc_microhap.smk).
+      vcf:
+        type: string
+        minLength: 1
+        description: Cohort VCF (bgzipped, indexed). Sample IDs must match metadata sample_id column.
+
+  reference:
+    type: object
+    required: [fasta]
+    additionalProperties: false
+    properties:
+      fasta:
+        type: string
+        description: Path to the indexed reference FASTA. <fasta>.fai must sit beside it.
+      exclude_contigs:
+        type: array
+        items: { type: string }
+        default: []
+        description: Regex patterns; any .fai contig matching is dropped from the nuclear set.
+      mask_regions:
+        type: [string, "null"]
+        default: null
+        description: Optional bcftools -r region-string file (chrom:start-end). null disables masking.
+
+  metadata:
+    type: object
+    required: [table, roles]
+    additionalProperties: false
+    properties:
+      table:
+        type: string
+        description: Path to one tidy samples.tsv. The only metadata input the agnostic path consumes.
+      roles:
+        type: object
+        required: [sample_id]
+        additionalProperties: false
+        description: Map analytical roles to actual column names in samples.tsv. Null disables the role.
+        properties:
+          sample_id:    { type: string, minLength: 1 }
+          group:        { type: [string, "null"] }
+          geography:    { type: [string, "null"] }
+          country:      { type: [string, "null"] }
+          host:         { type: [string, "null"] }
+          date:         { type: [string, "null"] }
+          case_control: { type: [string, "null"] }
+
+  controls:
+    type: object
+    required: [exclude_patterns]
+    additionalProperties: false
+    properties:
+      exclude_patterns:
+        type: array
+        items: { type: string }
+        description: Regex patterns; sample IDs matching are dropped at the first QC step.
+
+  qc:
+    type: object
+    required: [min_mac, filter_pass]
+    additionalProperties: true
+    properties:
+      min_mac:     { type: integer, minimum: 0 }
+      filter_pass: { type: boolean }
+
+  compute:
+    type: object
+    required: [threads_heavy, threads_light]
+    additionalProperties: true
+    properties:
+      threads_heavy: { type: integer, minimum: 1 }
+      threads_light: { type: integer, minimum: 1 }
+
+  paths:
+    type: object
+    required: [outputs, logs, reports]
+    additionalProperties: false
+    properties:
+      outputs: { type: string }
+      logs:    { type: string }
+      reports: { type: string }

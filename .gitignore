@@ -1,0 +1,98 @@
+# .gitignore — agnostic pop-gen pipeline (scripts-only, data excluded by default)
+# Generated via the repo-scaffold skill's default, plus this pipeline's specifics.
+# Aggressive by design. To publish ONE small synthetic/public file, un-ignore it
+# explicitly, e.g. when the tiny test cohort lands:  !tests/tiny_cohort/toy.vcf.gz
+
+# === Research data & large/binary outputs — never commit ===
+data/
+raw/
+results/
+output/
+outputs/
+*.csv
+*.tsv
+*.xlsx
+*.parquet
+*.feather
+*.rds
+*.RData
+*.rda
+
+# Genomics formats
+*.fastq
+*.fq
+*.fastq.gz
+*.fq.gz
+*.bam
+*.sam
+*.cram
+*.bai
+*.crai
+*.csi
+*.vcf
+*.vcf.gz
+*.bcf
+*.bed
+*.bim
+*.fam
+*.ped
+*.gff
+*.gtf
+*.fasta
+*.fa
+*.fna
+*.fai
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# === Secrets / credentials ===
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+*.p12
+credentials
+.netrc
+.pgpass
+service-account*.json
+.aws/
+.ssh/
+
+# === Sample sheets / metadata (un-ignore deliberately if truly safe) ===
+*sample_sheet*
+*samplesheet*
+*manifest*
+*barcodes*
+
+# === Pipeline run artefacts ===
+logs/
+reports/
+.snakemake/
+
+# === Python ===
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# === R ===
+.Rproj.user/
+.Rhistory
+.Ruserdata
+
+# === OS / editor / logs ===
+.DS_Store
+Thumbs.db
+*.swp
+*~
+*.log
+
+# === Transient artefact from the data-layout migration (remove on host) ===
+data_old_symlink

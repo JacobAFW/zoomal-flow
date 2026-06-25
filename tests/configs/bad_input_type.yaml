@@ -1,0 +1,38 @@
+# Negative test: input_type set to an unknown value. validate_config.py
+# should reject this with a clear error pointing at cohort.input_type.
+cohort:
+  name: "neg_test_cohort"
+  input_type: "wgz"            # bad — schema enforces enum [wgs, microhap]
+  vcf: "data/vcf/cohort.vcf.gz"
+
+reference:
+  fasta: "data/reference/ref.fasta"
+  exclude_contigs: []
+  mask_regions: null
+
+metadata:
+  table: "data/metadata/samples.tsv"
+  roles:
+    sample_id: "sample_id"
+    group: null
+    geography: null
+    country: null
+    host: null
+    date: null
+    case_control: null
+
+controls:
+  exclude_patterns: ["ctrl"]
+
+qc:
+  min_mac: 2
+  filter_pass: true
+
+compute:
+  threads_heavy: 4
+  threads_light: 2
+
+paths:
+  outputs: "outputs"
+  logs:    "logs"
+  reports: "reports"

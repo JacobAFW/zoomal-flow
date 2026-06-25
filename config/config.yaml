@@ -1,0 +1,49 @@
+# Data-agnostic pop-gen pipeline — config (TEMPLATE)
+# --------------------------------------------------------------------------
+# Copy this file (or cohort.example.yaml) to your cohort's working directory
+# and fill in the values. Validated against config/schema/config.schema.yaml
+# at workflow start; missing required fields or a bad input_type will abort
+# the run with a clear message before any rule executes.
+#
+# Stages 0–1 (this increment) consume: cohort, reference, metadata, controls,
+# qc, compute, paths. Later stage blocks (moi, structure, ibd, …) layer on top.
+# --------------------------------------------------------------------------
+
+cohort:
+  name: "my_cohort"          # used in output paths / report title
+  input_type: "wgs"          # "wgs" | "microhap"  — drives the QC seam
+  vcf: "data/vcf/cohort.vcf.gz"   # bgzipped + indexed; sample IDs match metadata
+
+reference:
+  fasta: "data/reference/reference.fasta"   # .fai must sit beside it
+  exclude_contigs: []        # regex patterns; matched against .fai contig names
+  mask_regions: null         # path to bcftools -r region file, or null to skip mask
+
+metadata:
+  table: "data/metadata/samples.tsv"
+  # Column-role map. Set to null to disable that role (the dependent
+  # analyses will be skipped with a logged note, not error).
+  roles:
+    sample_id:    "sample_id"   # REQUIRED — must match VCF sample names
+    group:        null
+    geography:    null
+    country:      null
+    host:         null
+    date:         null
+    case_control: null
+
+controls:
+  exclude_patterns: ["ctrl", "cpos", "cneg"]   # regex, applied to sample IDs
+
+qc:
+  min_mac: 2
+  filter_pass: true
+
+compute:
+  threads_heavy: 8
+  threads_light: 2
+
+paths:
+  outputs: "outputs"
+  logs:    "logs"
+  reports: "reports"

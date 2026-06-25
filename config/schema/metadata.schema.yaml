@@ -1,0 +1,60 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+description: |
+  Metadata role schema for the agnostic pop-gen pipeline. Captures which
+  analytical roles are required vs optional and what downstream analyses each
+  role drives. The actual column→role mapping is read from config.metadata.roles
+  at runtime; this file documents the required role and its semantics in one
+  schema-shaped object so it lives next to config.schema.yaml and can be
+  validated by the same tooling.
+type: object
+required: [roles]
+additionalProperties: false
+properties:
+  roles:
+    type: object
+    required: [sample_id]
+    additionalProperties: false
+    properties:
+      sample_id:
+        type: object
+        required: [required, drives, on_absence]
+        properties:
+          required:    { const: true }
+          drives:      { type: string }
+          on_absence:  { type: string, const: "hard_error" }
+      group:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }
+      geography:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }
+      country:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }
+      host:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }
+      date:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }
+      case_control:
+        type: object
+        properties:
+          required:   { const: false }
+          drives:     { type: string }
+          on_absence: { type: string, const: "skip_dependent" }

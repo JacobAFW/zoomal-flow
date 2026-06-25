@@ -1,0 +1,52 @@
+# Worked example: Indonesia + Malaysia P. knowlesi cohort.
+# --------------------------------------------------------------------------
+# This is the config the V1 pipeline ran against, expressed in the agnostic
+# schema. Use it as a template for a real cohort: copy to config.yaml and
+# adjust paths + role mappings. Data paths assume `agnostic/data/` either
+# contains the cohort inputs directly OR is symlinked to the V1 `data/` tree
+# (see agnostic/README.md).
+# --------------------------------------------------------------------------
+
+cohort:
+  name: "indonesia_pk"
+  input_type: "wgs"
+  vcf: "data/vcf/merged_popgen.vcf.gz"
+
+reference:
+  fasta: "data/reference/strain_A1_H.1.Icor.fasta"
+  exclude_contigs: ["MIT", "API"]                # drops PKNH_MIT_v2 + new_API_strain_A1_H.1
+  mask_regions: "data/reference/regions_to_mask.list"
+
+metadata:
+  # One tidy row per VCF sample: columns Sample, Country, State, District,
+  # Cluster, Host, Parasitemia, EnrolDate, Source. The agnostic path consumes
+  # it directly — no six-file assembly is re-done here.
+  # This worked example ships a frozen copy of the Indo cohort table under
+  # the agnostic tree's own data/metadata/ (gitignored — sample metadata is
+  # under publication embargo, so it is never committed). For a fresh cohort
+  # you drop your own tidy samples.tsv at the same relative path.
+  table: "data/metadata/samples.tsv"
+  roles:
+    sample_id:    "Sample"
+    group:        "Cluster"
+    geography:    "State"
+    country:      "Country"
+    host:         "Host"
+    date:         "EnrolDate"
+    case_control: null
+
+controls:
+  exclude_patterns: ["ctrl", "cpos", "cneg"]
+
+qc:
+  min_mac: 2
+  filter_pass: true
+
+compute:
+  threads_heavy: 8
+  threads_light: 2
+
+paths:
+  outputs: "outputs"
+  logs:    "logs"
+  reports: "reports"

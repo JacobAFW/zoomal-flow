@@ -1,0 +1,101 @@
+# Agnostic pop-gen pipeline — Snakefile
+# --------------------------------------------------------------------------
+# Invoke from the agnostic/ directory:
+#
+#   cd agnostic/
+#   source ../envs/activate.sh        # V1 env (carried over; not duplicated)
+#   snakemake --cores N
+#
+# Override the default config with --configfile path/to/cohort.yaml.
+# Validates config before any rule is parsed; aborts with a clear error
+# message if the config is malformed.
+#
+# Stages 0–1 are implemented; later stages (2–6) are scheduled increments.
+# --------------------------------------------------------------------------
+
+import json
+import sys
+from pathlib import Path
+
+# Make `scripts/py/` importable so we can call helpers at parse time.
+_HERE = Path(workflow.basedir).resolve()              # workflow/
+_AGNOSTIC = _HERE.parent                              # agnostic/
+sys.path.insert(0, str(_AGNOSTIC / "scripts" / "py"))
+
+from validate_config import load_and_validate         # noqa: E402
+from contigs_from_fai import derive_contigs           # noqa: E402
+
+# Default config + schema live under config/. Override config with --configfile.
+DEFAULT_CONFIG = str(_AGNOSTIC / "config" / "config.yaml")
+SCHEMA         = str(_AGNOSTIC / "config" / "schema" / "config.schema.yaml")
+
+configfile: DEFAULT_CONFIG
+
+# Validate up front — any required-key omission or bad input_type aborts the
+# workflow before the DAG is built. Errors are printed to stderr by the helper.
+load_and_validate(workflow.configfiles[-1] if workflow.configfiles else DEFAULT_CONFIG,
+                  SCHEMA)
+
+# Convenience accessors used across rules.
+PATHS    = config["paths"]
+COHORT   = config["cohort"]
+REF      = config["reference"]
+META     = config["metadata"]
+ROLES    = META["roles"]
+CONTROLS = config["controls"]
+QC       = config["qc"]
+
+# Derive the nuclear-contig list from the reference .fai at parse time.
+# This replaces V1's hand-listed nuclear_contigs array. The contig→integer
+# map (for later stages that need integer chrom codes) is written to disk
+# by a dedicated rule (`build_contig_map`) so it travels with outputs/.
+_FAI = REF["fasta"] + ".fai"
+NUCLEAR_CONTIGS = derive_contigs(_FAI, REF.get("exclude_contigs", []))
+if not NUCLEAR_CONTIGS:
+    sys.exit(f"ERROR: no contigs left after applying exclude_contigs={REF.get('exclude_contigs', [])} "
+             f"to {_FAI}. Check reference.exclude_contigs in your config.")
+
+# Ensure top-level output dirs exist (cheap; avoids the first rule racing on mkdir).
+for d in (PATHS["outputs"], PATHS["logs"], PATHS["reports"]):
+    Path(d).mkdir(parents=True, exist_ok=True)
+
+# Persist the role map to disk at parse time so the metadata-validator R
+# script can read it as a plain file. Avoids embedding JSON literals (with
+# curly braces) inside a Snakemake shell template, which would collide with
+# Snakemake's own {placeholder} substitution.
+ROLES_JSON = Path(PATHS["outputs"]) / "setup" / "roles.json"
+ROLES_JSON.parent.mkdir(parents=True, exist_ok=True)
+ROLES_JSON.write_text(json.dumps(ROLES, indent=2) + "\n")
+
+# --------------------------------------------------------------------------
+# Per-stage rules
+# --------------------------------------------------------------------------
+include: "rules/00_setup.smk"
+include: "rules/01_qc.smk"
+
+# --------------------------------------------------------------------------
+# Default target — Stage 0–1 outputs only (this increment).
+# Common targets run regardless of input_type; WGS-specific diagnostic
+# figures are added only when input_type == "wgs". Microhap-equivalents
+# will be added when the microhap QC path is implemented.
+# --------------------------------------------------------------------------
+FINAL_TARGETS = [
+    f"{PATHS['outputs']}/setup/vcf_samples.txt",
+    f"{PATHS['outputs']}/setup/contig_map.tsv",
+    f"{PATHS['outputs']}/setup/nuclear_contigs.txt",
+    f"{PATHS['outputs']}/metadata/samples.tsv",
+    # Shared QC seam output — see top of 01_qc.smk for the contract.
+    f"{PATHS['outputs']}/qc/snps.qc.vcf.gz",
+]
+if COHORT["input_type"] == "wgs":
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/qc/variant_count.txt",
+        f"{PATHS['reports']}/figures/maf_density_overall.png",
+        f"{PATHS['reports']}/figures/maf_density_by_chrom.png",
+        f"{PATHS['reports']}/figures/miss_density_per_sample.png",
+        f"{PATHS['reports']}/figures/miss_density_per_variant.png",
+    ]
+
+rule all:
+    input:
+        FINAL_TARGETS
