@@ -1,4 +1,4 @@
-# Data-agnostic pop-gen pipeline — design doc
+# ZOOMAL-Flow (data-agnostic pop-gen pipeline) — design doc
 
 Draft for review, 25 Jun 2026. Companion to `agnostic_pipeline_kickoff_250626.md`.
 **Nothing is built yet.** All four §7 questions resolved (see §7); architecture is settled

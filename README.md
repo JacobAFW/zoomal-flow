@@ -1,9 +1,10 @@
-# Agnostic pop-gen pipeline
+# ZOOMAL-Flow
 
-A data-agnostic refactor of the V1 Indonesia *P. knowlesi* pipeline. The same
+A data-agnostic population-genetics pipeline for zoonotic malaria. The same
 six analysis stages (QC → MOI → structure → IBD → introgression → selection)
 run for any cohort + reference, with every cohort-specific assumption lifted
-to config or derived from inputs.
+to config or derived from inputs. Originally refactored from the V1 Indonesia
+*P. knowlesi* pipeline.
 
 This increment ships **Stage 0 (setup)** and **Stage 1 (QC)** only. The
 WGS path is implemented; the microhap path is a stubbed seam.
@@ -143,3 +144,9 @@ they exercise.
   its analysis with a logged note, never a crash.
 - **Seam output is shared.** Both WGS and microhap QC paths terminate at
   `outputs/qc/snps.qc.vcf.gz`. Stage 2+ reads from there and is fork-free.
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). © 2026 Menzies School of Health Research.
