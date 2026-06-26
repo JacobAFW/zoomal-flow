@@ -1,7 +1,7 @@
 $schema: "http://json-schema.org/draft-07/schema#"
 description: Data-agnostic pop-gen pipeline config schema. Validated at workflow start.
 type: object
-required: [cohort, reference, metadata, controls, qc, compute, paths]
+required: [cohort, reference, metadata, controls, qc, moi, compute, paths]
 additionalProperties: true
 
 properties:
@@ -81,6 +81,30 @@ properties:
     properties:
       min_mac:     { type: integer, minimum: 0 }
       filter_pass: { type: boolean }
+
+  moi:
+    type: object
+    required: [min_maf, fws_polyclonal_cutoff, fws_exclusion_cutoff, seed]
+    additionalProperties: true
+    properties:
+      min_maf:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Stricter MAF for moimix (biallelic BAF needs it). V1 = 0.05.
+      fws_polyclonal_cutoff:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Fws below = polyclonal (Manske 2012 convention). V1 = 0.95.
+      fws_exclusion_cutoff:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Fws below = excluded from Stage 3+. V1 = 0.95.
+      seed:
+        type: integer
+        description: moimix set.seed for reproducibility. V1 = 2023.
 
   compute:
     type: object

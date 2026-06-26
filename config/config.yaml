@@ -39,6 +39,12 @@ qc:
   min_mac: 2
   filter_pass: true
 
+moi:
+  min_maf: 0.05                 # stricter MAF for moimix (biallelic BAF needs it)
+  fws_polyclonal_cutoff: 0.95   # Fws below = polyclonal (Manske 2012 convention)
+  fws_exclusion_cutoff: 0.95    # Fws below = excluded from Stage 3+ (single-genotype methods)
+  seed: 2023                    # moimix set.seed; match across cohorts for reproducibility
+
 compute:
   threads_heavy: 8
   threads_light: 2

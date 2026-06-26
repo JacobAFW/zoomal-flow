@@ -10,7 +10,7 @@
 # Validates config before any rule is parsed; aborts with a clear error
 # message if the config is malformed.
 #
-# Stages 0–1 are implemented; later stages (2–6) are scheduled increments.
+# Stages 0–2 are implemented; later stages (3–6) are scheduled increments.
 # --------------------------------------------------------------------------
 
 import json
@@ -72,12 +72,13 @@ ROLES_JSON.write_text(json.dumps(ROLES, indent=2) + "\n")
 # --------------------------------------------------------------------------
 include: "rules/00_setup.smk"
 include: "rules/01_qc.smk"
+include: "rules/02_moi.smk"
 
 # --------------------------------------------------------------------------
-# Default target — Stage 0–1 outputs only (this increment).
+# Default target — Stage 0–2 outputs (this increment adds Stage 2).
 # Common targets run regardless of input_type; WGS-specific diagnostic
-# figures are added only when input_type == "wgs". Microhap-equivalents
-# will be added when the microhap QC path is implemented.
+# figures are added only when input_type == "wgs". Role-driven summaries +
+# plots in Stage 2 are wired only when their backing role is present.
 # --------------------------------------------------------------------------
 FINAL_TARGETS = [
     f"{PATHS['outputs']}/setup/vcf_samples.txt",
@@ -86,6 +87,9 @@ FINAL_TARGETS = [
     f"{PATHS['outputs']}/metadata/samples.tsv",
     # Shared QC seam output — see top of 01_qc.smk for the contract.
     f"{PATHS['outputs']}/qc/snps.qc.vcf.gz",
+    # Shared MOI seam output — see top of 02_moi.smk for the contract.
+    f"{PATHS['outputs']}/moi/fws_MOI.tsv",
+    f"{PATHS['outputs']}/moi/exclude_high_moi.txt",
 ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [
@@ -94,6 +98,20 @@ if COHORT["input_type"] == "wgs":
         f"{PATHS['reports']}/figures/maf_density_by_chrom.png",
         f"{PATHS['reports']}/figures/miss_density_per_sample.png",
         f"{PATHS['reports']}/figures/miss_density_per_variant.png",
+    ]
+
+# Role-driven Stage 2 targets — added only when their role is configured.
+if ROLES.get("country"):
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/moi/fws_by_country.tsv",
+        f"{PATHS['reports']}/figures/fws_density_by_country.png",
+        f"{PATHS['reports']}/figures/fws_density_by_country.svg",
+    ]
+if ROLES.get("geography"):
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/moi/fws_by_geography.tsv",
+        f"{PATHS['reports']}/figures/fws_density_by_geography.png",
+        f"{PATHS['reports']}/figures/fws_density_by_geography.svg",
     ]
 
 rule all:

@@ -42,6 +42,12 @@ qc:
   min_mac: 2
   filter_pass: true
 
+moi:
+  min_maf: 0.05
+  fws_polyclonal_cutoff: 0.95
+  fws_exclusion_cutoff: 0.95
+  seed: 2023
+
 compute:
   threads_heavy: 8
   threads_light: 2
