@@ -94,5 +94,8 @@ Thumbs.db
 *~
 *.log
 
+# === Internal dev briefs — kept local, never published ===
+briefs/
+
 # === Transient artefact from the data-layout migration (remove on host) ===
 data_old_symlink

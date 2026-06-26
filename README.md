@@ -9,8 +9,7 @@ to config or derived from inputs. Originally refactored from the V1 Indonesia
 This increment ships **Stage 0 (setup)** and **Stage 1 (QC)** only. The
 WGS path is implemented; the microhap path is a stubbed seam.
 
-See `DESIGN.md` for the full architecture, `briefs/stage_00_01_brief.md` for
-the build spec this increment satisfies.
+See `DESIGN.md` for the full architecture.
 
 ---
 
