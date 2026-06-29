@@ -45,6 +45,17 @@ moi:
   fws_exclusion_cutoff: 0.95    # Fws below = excluded from Stage 3+ (single-genotype methods)
   seed: 2023                    # moimix set.seed; match across cohorts for reproducibility
 
+structure:
+  min_maf: 0.01                 # --maf for final variant filter (step 4 of V→S→V→M chain)
+  max_sample_missing: 0.10      # --mind  (step 2)
+  max_variant_missing: 0.10     # --geno  (step 3)
+  admixture_k_min: 2
+  admixture_k_max: 10
+  admixture_cv_folds: 10        # ADMIXTURE --cv N folds
+  admixture_k: null             # null = auto-pick best K from CV minimum; int = override
+  cluster_labelling: "numbered" # "numbered" (default, no metadata) | "auto" | "reference"
+  duplicate_id_pattern: null    # regex stripped from sample IDs for dedup; null = no strip
+
 compute:
   threads_heavy: 8
   threads_light: 2

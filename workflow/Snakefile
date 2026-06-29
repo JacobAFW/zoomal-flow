@@ -10,7 +10,8 @@
 # Validates config before any rule is parsed; aborts with a clear error
 # message if the config is malformed.
 #
-# Stages 0–2 are implemented; later stages (3–6) are scheduled increments.
+# Stages 0–3 are implemented; later stages (Stage 3b figures, 4–6) are
+# scheduled increments.
 # --------------------------------------------------------------------------
 
 import json
@@ -73,9 +74,10 @@ ROLES_JSON.write_text(json.dumps(ROLES, indent=2) + "\n")
 include: "rules/00_setup.smk"
 include: "rules/01_qc.smk"
 include: "rules/02_moi.smk"
+include: "rules/03_structure.smk"
 
 # --------------------------------------------------------------------------
-# Default target — Stage 0–2 outputs (this increment adds Stage 2).
+# Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
 # Common targets run regardless of input_type; WGS-specific diagnostic
 # figures are added only when input_type == "wgs". Role-driven summaries +
 # plots in Stage 2 are wired only when their backing role is present.
@@ -90,7 +92,21 @@ FINAL_TARGETS = [
     # Shared MOI seam output — see top of 02_moi.smk for the contract.
     f"{PATHS['outputs']}/moi/fws_MOI.tsv",
     f"{PATHS['outputs']}/moi/exclude_high_moi.txt",
+    # Stage 3 core outputs — figures land in 3b.
+    f"{PATHS['outputs']}/structure/cleaned.fam",
+    f"{PATHS['outputs']}/structure/admixture/cv_error.tsv",
+    f"{PATHS['outputs']}/structure/best_k.txt",
+    f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+    f"{PATHS['outputs']}/structure/Pk.eigenvec",
+    f"{PATHS['outputs']}/structure/pca_variance.tsv",
+    f"{PATHS['outputs']}/structure/Pk.dist",
+    f"{PATHS['reports']}/figures/admixture_cv.png",
 ]
+# Optional GIS-join target — present only if metadata.gis is configured.
+if META.get("gis"):
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/structure/admix_clusters_gis.tsv",
+    ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [
         f"{PATHS['outputs']}/qc/variant_count.txt",

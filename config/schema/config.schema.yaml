@@ -1,7 +1,7 @@
 $schema: "http://json-schema.org/draft-07/schema#"
 description: Data-agnostic pop-gen pipeline config schema. Validated at workflow start.
 type: object
-required: [cohort, reference, metadata, controls, qc, moi, compute, paths]
+required: [cohort, reference, metadata, controls, qc, moi, structure, compute, paths]
 additionalProperties: true
 
 properties:
@@ -105,6 +105,38 @@ properties:
       seed:
         type: integer
         description: moimix set.seed for reproducibility. V1 = 2023.
+
+  structure:
+    type: object
+    required:
+      - min_maf
+      - max_sample_missing
+      - max_variant_missing
+      - admixture_k_min
+      - admixture_k_max
+      - admixture_cv_folds
+      - cluster_labelling
+    additionalProperties: true
+    properties:
+      min_maf:             { type: number,  minimum: 0, maximum: 1 }
+      max_sample_missing:  { type: number,  minimum: 0, maximum: 1 }
+      max_variant_missing: { type: number,  minimum: 0, maximum: 1 }
+      admixture_k_min:     { type: integer, minimum: 1 }
+      admixture_k_max:     { type: integer, minimum: 1 }
+      admixture_cv_folds:  { type: integer, minimum: 2 }
+      admixture_k:
+        type: [integer, "null"]
+        description: Override best-K. null = auto-pick from the CV minimum.
+      cluster_labelling:
+        type: string
+        enum: [reference, auto, numbered]
+        description: How to label ADMIXTURE components onto Cluster names.
+      duplicate_id_pattern:
+        type: [string, "null"]
+        description: |
+          Regex stripped off sample IDs to derive a dedup base ID (V1's
+          Illumina lane suffix _DK.*). null = no strip (still dedups on the
+          remaining underscore/hyphen normalisation).
 
   compute:
     type: object

@@ -34,6 +34,15 @@ moi:
   fws_exclusion_cutoff: 0.95
   seed: 2023
 
+structure:
+  min_maf: 0.01
+  max_sample_missing: 0.10
+  max_variant_missing: 0.10
+  admixture_k_min: 2
+  admixture_k_max: 10
+  admixture_cv_folds: 10
+  cluster_labelling: "numbered"
+
 compute:
   threads_heavy: 4
   threads_light: 2
