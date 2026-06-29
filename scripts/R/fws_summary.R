@@ -42,10 +42,10 @@ combined <- fws %>%
   rename(sample_id = sample) %>%
   left_join(meta, by = "sample_id")
 
-summarise_by <- function(df, group_col, cutoff) {
+summarise_by <- function(df, group_cols, cutoff) {
   df %>%
-    filter(!is.na(.data[[group_col]])) %>%
-    group_by(.data[[group_col]]) %>%
+    filter(if_all(all_of(group_cols), ~ !is.na(.x))) %>%
+    group_by(across(all_of(group_cols))) %>%
     summarise(
       n              = n(),
       fws_median     = median(Fws, na.rm = TRUE),
@@ -76,10 +76,20 @@ if (out_geo != "NULL") {
   if (!"geography" %in% names(combined)) {
     message("[fws_summary] geography role configured but column 'geography' absent → skipping")
   } else {
-    by_geo <- summarise_by(combined, "geography", cutoff)
+    # Composite (country, geography) when country role is present — collision-
+    # safe across cohorts that share a region name (and reproduces V1's
+    # Sabah-by-country split: Malaysia 819 + Macaque 2). Fall back to
+    # geography-only when country is absent.
+    geo_keys <- if ("country" %in% names(combined)) {
+      c("country", "geography")
+    } else {
+      "geography"
+    }
+    by_geo <- summarise_by(combined, geo_keys, cutoff)
     write_tsv(by_geo, out_geo)
-    message(sprintf("[fws_summary] wrote %s", out_geo))
-    cat("\n=== Fws by geography ===\n")
+    message(sprintf("[fws_summary] wrote %s (grouped by %s)",
+                    out_geo, paste(geo_keys, collapse = " + ")))
+    cat("\n=== Fws by ", paste(geo_keys, collapse = " + "), " ===\n", sep = "")
     print(by_geo, n = Inf)
   }
 } else {
