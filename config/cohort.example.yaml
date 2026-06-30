@@ -10,7 +10,9 @@
 cohort:
   name: "indonesia_pk"
   input_type: "wgs"
-  vcf: "data/vcf/merged_popgen.vcf.gz"
+  # Cleaned VCF: 990 → 981 samples (9 dropped via data/input_prep/droplist.txt).
+  # See data/INPUT_PREP.md for the drop list and rationale.
+  vcf: "data/vcf/merged_popgen.clean.vcf.gz"
 
 reference:
   fasta: "data/reference/strain_A1_H.1.Icor.fasta"
@@ -34,6 +36,10 @@ metadata:
     host:         "Host"
     date:         "EnrolDate"
     case_control: null
+  # Per-sample lat/long (optional). Triggers the gis_join rule + map.
+  # Schema: sample-ID col (Sample/sample/sample_id), plus lat & long cols
+  # under any of (lat/Lat/Latitude, long/Long/Longitude).
+  gis: "data/validation/admix_clusters_gis.tsv"
 
 controls:
   exclude_patterns: ["ctrl", "cpos", "cneg"]
@@ -54,7 +60,7 @@ structure:
   max_variant_missing: 0.10
   admixture_k_min: 2
   admixture_k_max: 10
-  admixture_cv_folds: 10
+  admixture_cv_folds: 5               # matches V1's --cv default
   admixture_k: null
   cluster_labelling: "reference"      # V1's Mn/Mf/Peninsular labels via the group role
   duplicate_id_pattern: "_DK.*"       # Illumina lane suffix on the Indo VCF

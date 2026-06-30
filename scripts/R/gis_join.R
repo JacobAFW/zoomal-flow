@@ -62,6 +62,22 @@ gis <- gis_raw %>%
   distinct(Sample, .keep_all = TRUE) %>%
   select(Sample, lat, long)
 
+# Sanity filter: drop rows with physically-impossible coords (lat/long
+# swap typos in the source file). Lat in [-90, 90], long in [-180, 180].
+bad_coords <- gis %>%
+  filter(!is.na(lat) & !is.na(long) &
+         (abs(lat) > 90 | abs(long) > 180))
+if (nrow(bad_coords) > 0) {
+  message(sprintf("[gis_join] %d sample(s) have invalid lat/long (likely swapped) — dropping:",
+                  nrow(bad_coords)))
+  print(bad_coords)
+  gis <- gis %>%
+    mutate(
+      lat  = if_else(abs(lat) > 90 | abs(long) > 180, NA_real_, lat),
+      long = if_else(abs(lat) > 90 | abs(long) > 180, NA_real_, long)
+    )
+}
+
 joined <- clusters %>%
   left_join(meta_keep, by = "Sample") %>%
   left_join(gis,       by = "Sample")

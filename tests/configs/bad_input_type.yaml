@@ -40,7 +40,7 @@ structure:
   max_variant_missing: 0.10
   admixture_k_min: 2
   admixture_k_max: 10
-  admixture_cv_folds: 10
+  admixture_cv_folds: 5
   cluster_labelling: "numbered"
 
 compute:

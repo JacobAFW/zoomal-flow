@@ -75,6 +75,7 @@ include: "rules/00_setup.smk"
 include: "rules/01_qc.smk"
 include: "rules/02_moi.smk"
 include: "rules/03_structure.smk"
+include: "rules/03_figures.smk"
 
 # --------------------------------------------------------------------------
 # Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
@@ -106,6 +107,34 @@ FINAL_TARGETS = [
 if META.get("gis"):
     FINAL_TARGETS += [
         f"{PATHS['outputs']}/structure/admix_clusters_gis.tsv",
+    ]
+
+# Stage 3 figures (3b) — role-guarded.
+# Always:
+FINAL_TARGETS += [
+    f"{PATHS['reports']}/figures/admixture_bars.png",
+    f"{PATHS['reports']}/figures/admixture_bars.svg",
+    f"{PATHS['reports']}/figures/pca.png",
+    f"{PATHS['reports']}/figures/pca.svg",
+    f"{PATHS['reports']}/figures/njt.png",
+    f"{PATHS['reports']}/figures/njt.svg",
+]
+if ROLES.get("country"):
+    FINAL_TARGETS += [
+        f"{PATHS['reports']}/figures/admixture_bars_by_country.png",
+        f"{PATHS['reports']}/figures/admixture_bars_by_country.svg",
+    ]
+if ROLES.get("geography"):
+    FINAL_TARGETS += [
+        f"{PATHS['reports']}/figures/admixture_bars_by_geography.png",
+        f"{PATHS['reports']}/figures/admixture_bars_by_geography.svg",
+        f"{PATHS['reports']}/figures/pca_by_geography.png",
+        f"{PATHS['reports']}/figures/pca_by_geography.svg",
+    ]
+if META.get("gis") and ROLES.get("geography") and ROLES.get("country"):
+    FINAL_TARGETS += [
+        f"{PATHS['reports']}/figures/admix_map.png",
+        f"{PATHS['reports']}/figures/admix_map.svg",
     ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [

@@ -50,6 +50,11 @@ properties:
       table:
         type: string
         description: Path to one tidy samples.tsv. The only metadata input the agnostic path consumes.
+      gis:
+        type: [string, "null"]
+        description: |
+          Optional per-sample GIS table (sample-ID + lat + long columns).
+          When set, triggers gis_join + the province map. null = no map.
       roles:
         type: object
         required: [sample_id]
