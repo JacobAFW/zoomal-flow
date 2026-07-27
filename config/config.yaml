@@ -56,6 +56,12 @@ structure:
   cluster_labelling: "numbered" # "numbered" (default, no metadata) | "auto" | "reference"
   duplicate_id_pattern: null    # regex stripped from sample IDs for dedup; null = no strip
 
+ibd:
+  cluster_min_maf: 0.01         # per-cluster PLINK --maf before hmmIBD
+  clonal_ibd_threshold: 0.95    # fract_sites_IBD ≥ this = clonal pair
+  min_cluster_n: 5              # skip hmmIBD on any cluster below this
+  focal_cluster: null           # optional: emit an extra pair-shaped file for this cluster
+
 compute:
   threads_heavy: 8
   threads_light: 2

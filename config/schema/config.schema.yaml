@@ -1,7 +1,7 @@
 $schema: "http://json-schema.org/draft-07/schema#"
 description: Data-agnostic pop-gen pipeline config schema. Validated at workflow start.
 type: object
-required: [cohort, reference, metadata, controls, qc, moi, structure, compute, paths]
+required: [cohort, reference, metadata, controls, qc, moi, structure, ibd, compute, paths]
 additionalProperties: true
 
 properties:
@@ -142,6 +142,36 @@ properties:
           Regex stripped off sample IDs to derive a dedup base ID (V1's
           Illumina lane suffix _DK.*). null = no strip (still dedups on the
           remaining underscore/hyphen normalisation).
+
+  ibd:
+    type: object
+    required:
+      - cluster_min_maf
+      - clonal_ibd_threshold
+      - min_cluster_n
+    additionalProperties: true
+    properties:
+      cluster_min_maf:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: PLINK --maf applied within each per-cluster IBD bfile.
+      clonal_ibd_threshold:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Sample pairs at or above this fraction of sites IBD are called clonal.
+      min_cluster_n:
+        type: integer
+        minimum: 2
+        description: Skip per-cluster hmmIBD for any cluster below this sample count.
+      focal_cluster:
+        type: [string, "null"]
+        description: |
+          Optional: name of a single cluster to spotlight. When set, an
+          additional pair-shaped clones file is emitted for that cluster
+          (mirrors V1's Pen_clones_IBD.txt schema). null = combined table
+          only.
 
   compute:
     type: object

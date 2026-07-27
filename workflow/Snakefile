@@ -10,7 +10,7 @@
 # Validates config before any rule is parsed; aborts with a clear error
 # message if the config is malformed.
 #
-# Stages 0–3 are implemented; later stages (Stage 3b figures, 4–6) are
+# Stages 0–4 core are implemented; later stages (Stage 4b figures, 5–6) are
 # scheduled increments.
 # --------------------------------------------------------------------------
 
@@ -76,6 +76,7 @@ include: "rules/01_qc.smk"
 include: "rules/02_moi.smk"
 include: "rules/03_structure.smk"
 include: "rules/03_figures.smk"
+include: "rules/04_ibd.smk"
 
 # --------------------------------------------------------------------------
 # Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
@@ -135,6 +136,21 @@ if META.get("gis") and ROLES.get("geography") and ROLES.get("country"):
     FINAL_TARGETS += [
         f"{PATHS['reports']}/figures/admix_map.png",
         f"{PATHS['reports']}/figures/admix_map.svg",
+    ]
+
+# Stage 4 core targets. Per-cluster hmm_fract.txt files are expanded
+# from the assign_clusters checkpoint at DAG-resolution time — see
+# ibd_cluster_targets() in 04_ibd.smk. clonal_clusters.tsv aggregates
+# every cluster's clonal pairs into a connected-component grouping;
+# focal_<name>_clones.tsv is optional (ibd.focal_cluster).
+FINAL_TARGETS += [
+    f"{PATHS['outputs']}/ibd/clonal_clusters.tsv",
+    f"{PATHS['outputs']}/ibd/combined/hmmIBD_input.tsv",
+    ibd_cluster_targets,
+]
+if config["ibd"].get("focal_cluster"):
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/ibd/focal_{config['ibd']['focal_cluster']}_clones.tsv",
     ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [

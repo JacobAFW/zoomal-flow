@@ -200,10 +200,15 @@ rule admixture_cv_plot:
         """
 
 
-rule assign_clusters:
+checkpoint assign_clusters:
     """
     Read the best-K .Q, assign each sample to its dominant ancestry
     component, label components per structure.cluster_labelling.
+
+    Declared as a `checkpoint` (not a plain rule) because the labels it
+    emits drive Stage 4's per-cluster IBD wildcard expansion — the set of
+    cluster names isn't known until this file exists. Snakemake re-
+    evaluates the DAG once the checkpoint's output is on disk.
 
     WHAT: scripts/R/assign_clusters.R — label-mode-driven (numbered |
           auto | reference). Reads `best_k.txt` so it never hardcodes a K.
