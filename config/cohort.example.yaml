@@ -71,6 +71,22 @@ ibd:
   min_cluster_n: 5
   focal_cluster: "Peninsular"         # slide-10 focus — extra pair-file to compare V1
 
+selection:
+  models:
+    # V1's published iHS comparison — expected negative result (no candidate
+    # regions). Filters reference canonical role columns:
+    #   `group` = ADMIXTURE cluster label (Mn / Mf / Peninsular via
+    #             cluster_labelling: reference)
+    #   `geography` = province/state role
+    - name: "Aceh_vs_other_Peninsular"
+      case_filter:    "group == 'Peninsular' & geography == 'Aceh'"
+      control_filter: "group == 'Peninsular' & geography != 'Aceh'"
+  ihs_threshold:     4
+  ihs_p_threshold:   0.0001
+  window_size_bp:    10000
+  window_overlap_bp: 1000
+  min_extr_markers:  3
+
 compute:
   threads_heavy: 8
   threads_light: 2

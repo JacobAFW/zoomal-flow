@@ -173,6 +173,26 @@ properties:
           (mirrors V1's Pen_clones_IBD.txt schema). null = combined table
           only.
 
+  selection:
+    type: object
+    additionalProperties: true
+    properties:
+      models:
+        type: array
+        default: []
+        items:
+          type: object
+          required: [name, case_filter, control_filter]
+          properties:
+            name:            { type: string, minLength: 1 }
+            case_filter:     { type: string, minLength: 1 }
+            control_filter:  { type: string, minLength: 1 }
+      ihs_threshold:     { type: number }
+      ihs_p_threshold:   { type: number, minimum: 0, maximum: 1 }
+      window_size_bp:    { type: integer, minimum: 1 }
+      window_overlap_bp: { type: integer, minimum: 0 }
+      min_extr_markers:  { type: integer, minimum: 1 }
+
   compute:
     type: object
     required: [threads_heavy, threads_light]

@@ -62,6 +62,24 @@ ibd:
   min_cluster_n: 5              # skip hmmIBD on any cluster below this
   focal_cluster: null           # optional: emit an extra pair-shaped file for this cluster
 
+# Stage 6: selection scans (rehh iHS). Empty by default — add per-cohort
+# models in cohort.example.yaml or your own cohort config. Each model has
+#   name           - used for output directory
+#   case_filter    - R expression over canonical roles + Cluster
+#   control_filter - R expression over canonical roles + Cluster
+# Example (uncomment to try):
+#   models:
+#     - name: "MyCase_vs_MyControl"
+#       case_filter:    "group == 'Peninsular' & geography == 'Aceh'"
+#       control_filter: "group == 'Peninsular' & geography != 'Aceh'"
+selection:
+  models: []
+  ihs_threshold:     4          # candidate-region threshold on |iHS|
+  ihs_p_threshold:   0.0001     # p-value threshold on candidate windows
+  window_size_bp:    10000
+  window_overlap_bp: 1000
+  min_extr_markers:  3
+
 compute:
   threads_heavy: 8
   threads_light: 2

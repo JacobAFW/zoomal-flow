@@ -78,6 +78,7 @@ include: "rules/03_structure.smk"
 include: "rules/03_figures.smk"
 include: "rules/04_ibd.smk"
 include: "rules/04_figures.smk"
+include: "rules/06_selection.smk"
 
 # --------------------------------------------------------------------------
 # Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
@@ -162,6 +163,15 @@ if ROLES.get("date"):
     FINAL_TARGETS += [
         f"{PATHS['reports']}/figures/clonal_temporal.png",
         f"{PATHS['reports']}/figures/clonal_temporal.svg",
+    ]
+
+# Stage 6 selection outputs — one per configured model.
+for _m in SELECTION_MODELS:
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/selection/{_m}/candidate_regions_iHS.tsv",
+        f"{PATHS['outputs']}/selection/{_m}/ihs_summary.tsv",
+        f"{PATHS['outputs']}/selection/{_m}/ihs_scan.png",
+        f"{PATHS['outputs']}/selection/{_m}/ihs_pvalue.png",
     ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [
