@@ -1,0 +1,68 @@
+# Tiny synthetic cohort — smoke-test config for Stages 0-4.
+cohort:
+  name: "tiny_cohort"
+  input_type: "wgs"
+  vcf: "tests/tiny_cohort/data/vcf/tiny.vcf.gz"
+
+reference:
+  fasta: "tests/tiny_cohort/data/reference/tiny.fasta"
+  exclude_contigs: ["MT"]
+  mask_regions: "tests/tiny_cohort/data/reference/regions_to_mask.list"
+
+metadata:
+  table: "tests/tiny_cohort/data/metadata/samples.tsv"
+  gis: null
+  roles:
+    sample_id:    "sample_id"
+    group:        null
+    geography:    "geography"
+    country:      "country"
+    host:         "host"
+    date:         "date"
+    case_control: null
+
+controls:
+  exclude_patterns: ["^ctrl"]
+
+qc:
+  min_mac: 2
+  filter_pass: true
+
+moi:
+  min_maf: 0.05
+  fws_polyclonal_cutoff: 0.95
+  # Cutoff dropped from V1's 0.95 default: the tiny cohort's
+  # simulated AD values give an intrinsic ~0.86 Fws floor, and
+  # 0.95 would exclude the whole cohort. 0.5 keeps everyone in
+  # for the Stage-3+ smoke test.
+  fws_exclusion_cutoff:  0.5
+  seed: 2023
+
+structure:
+  min_maf: 0.05
+  max_sample_missing: 0.20
+  max_variant_missing: 0.20
+  admixture_k_min: 2
+  admixture_k_max: 3
+  admixture_cv_folds: 5
+  admixture_k: null
+  cluster_labelling: "auto"     # tag by majority geography role
+  duplicate_id_pattern: null
+
+ibd:
+  cluster_min_maf: 0.05
+  clonal_ibd_threshold: 0.95
+  min_cluster_n: 5
+  focal_cluster: null
+
+selection:
+  models: []
+
+compute:
+  threads_heavy: 2
+  threads_light: 1
+
+paths:
+  outputs: "tests/tiny_cohort/outputs"
+  logs:    "tests/tiny_cohort/logs"
+  reports: "tests/tiny_cohort/reports"

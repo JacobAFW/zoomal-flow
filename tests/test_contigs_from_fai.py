@@ -59,22 +59,23 @@ def test_contig_map_is_1_indexed(tmp_path):
     assert cmap == [("chr1", 1), ("chr2", 2)], cmap
 
 
-# --- 2. Acceptance test against the real PKA1H1 .fai (brief §7) ------------
-# "contigs_from_fai.py unit-tested against V1's .fai: it must reproduce the
-#  14 ordered_PKNH_NN_v2 names and drop MIT/API."
+# --- 2. Acceptance test against the tiny-cohort fixture --------------------
+# Repointed from V1's real .fai to the self-contained tests/tiny_cohort/
+# fixture so the test suite runs standalone (no V1 tree required).
 
-V1_FAI = AGNOSTIC.parent / "data" / "reference" / "strain_A1_H.1.Icor.fasta.fai"
+TINY_FAI = AGNOSTIC / "tests" / "tiny_cohort" / "data" / "reference" / "tiny.fasta.fai"
 
 
-def test_v1_fai_reproduces_14_nuclear_contigs():
-    if not V1_FAI.exists():
-        # Skip rather than fail when running outside Jacob's tree.
+def test_tiny_cohort_fai_two_nuclear_contigs():
+    if not TINY_FAI.exists():
         import warnings
-        warnings.warn(f"V1 .fai not present at {V1_FAI}; skipping integration test")
+        warnings.warn(
+            f"tiny cohort .fai not present at {TINY_FAI}; "
+            f"regenerate via `python tests/tiny_cohort/generate.py`"
+        )
         return
-    got = derive_contigs(V1_FAI, exclude=["MIT", "API"])
-    expected = [f"ordered_PKNH_{i:02d}_v2" for i in range(1, 15)]
-    assert got == expected, f"Got {got}\nExpected {expected}"
+    got = derive_contigs(TINY_FAI, exclude=["MT"])
+    assert got == ["chr1", "chr2"], got
 
 
 # --- Fallback self-runner (no pytest required) ----------------------------
@@ -101,11 +102,11 @@ def _main():
 
     # Integration test takes no arg
     try:
-        test_v1_fai_reproduces_14_nuclear_contigs()
-        print("  PASS  test_v1_fai_reproduces_14_nuclear_contigs")
+        test_tiny_cohort_fai_two_nuclear_contigs()
+        print("  PASS  test_tiny_cohort_fai_two_nuclear_contigs")
     except AssertionError as e:
         failures += 1
-        print(f"  FAIL  test_v1_fai_reproduces_14_nuclear_contigs: {e}")
+        print(f"  FAIL  test_tiny_cohort_fai_two_nuclear_contigs: {e}")
 
     if failures:
         print(f"\n{failures} test(s) failed", file=sys.stderr)

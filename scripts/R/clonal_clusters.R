@@ -108,6 +108,17 @@ component_map <- clonal_pairs %>%
     )
   }) %>% bind_rows()
 
+# Zero clonal pairs across every cluster → empty tibble. Give it the
+# expected columns so the left_join below doesn't try to look up
+# non-existent join keys.
+if (nrow(component_map) == 0) {
+  component_map <- tibble(
+    sample       = character(0),
+    cluster      = character(0),
+    clonal_group = character(0),
+  )
+}
+
 per_sample <- sample_cluster %>%
   left_join(component_map, by = c("sample", "cluster")) %>%
   left_join(meta_keep, by = c("sample" = "sample_id"))

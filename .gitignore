@@ -99,3 +99,13 @@ briefs/
 
 # === Transient artefact from the data-layout migration (remove on host) ===
 data_old_symlink
+
+# === Tiny synthetic test cohort — safe to commit (it's fake) ===
+# Un-ignore the fixture inputs so the smoke test is self-contained. Run
+# artefacts (outputs/logs/reports beneath tests/tiny_cohort) stay ignored
+# via the top-level outputs/, logs/, reports/ patterns above.
+!tests/tiny_cohort/data/
+!tests/tiny_cohort/data/**
+!tests/tiny_cohort/config.yaml
+!tests/tiny_cohort/generate.py
+!tests/tiny_cohort/README.md
