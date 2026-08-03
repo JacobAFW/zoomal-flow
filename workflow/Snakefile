@@ -77,6 +77,7 @@ include: "rules/02_moi.smk"
 include: "rules/03_structure.smk"
 include: "rules/03_figures.smk"
 include: "rules/04_ibd.smk"
+include: "rules/04_figures.smk"
 
 # --------------------------------------------------------------------------
 # Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
@@ -151,6 +152,16 @@ FINAL_TARGETS += [
 if config["ibd"].get("focal_cluster"):
     FINAL_TARGETS += [
         f"{PATHS['outputs']}/ibd/focal_{config['ibd']['focal_cluster']}_clones.tsv",
+    ]
+
+# Stage 4b figures. Connectivity is expanded via a checkpoint-aware input
+# function; the temporal plot needs the date role. Both role-guarded.
+if ROLES.get("geography"):
+    FINAL_TARGETS += [ibd_connectivity_targets]
+if ROLES.get("date"):
+    FINAL_TARGETS += [
+        f"{PATHS['reports']}/figures/clonal_temporal.png",
+        f"{PATHS['reports']}/figures/clonal_temporal.svg",
     ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [
