@@ -199,3 +199,68 @@ if ROLES.get("geography"):
 rule all:
     input:
         FINAL_TARGETS
+
+
+# --------------------------------------------------------------------------
+# `walkthrough` + `walkthrough-check`: regenerate docs/WALKTHROUGH.md from
+# rule docstrings, or fail non-zero if it's stale relative to the rules
+# (DESIGN §6: the raw MD is the source of truth for what the pipeline does).
+# --------------------------------------------------------------------------
+
+_WALKTHROUGH_SCRIPT = str(_AGNOSTIC / "scripts" / "py" / "render_walkthrough.py")
+_WALKTHROUGH_MD     = str(_AGNOSTIC / "docs" / "WALKTHROUGH.md")
+# The walkthrough is pinned to the worked-example config so the committed
+# copy is stable — TUNABLES resolve to the same values regardless of which
+# config was loaded for `snakemake` proper. A different cohort renders its
+# own copy under docs/ locally by pointing --config elsewhere.
+_WALKTHROUGH_CFG    = str(_AGNOSTIC / "config" / "cohort.example.yaml")
+
+
+rule walkthrough:
+    """
+    Regenerate docs/WALKTHROUGH.md from the current rules + example config.
+
+    WHAT: python scripts/py/render_walkthrough.py --write
+    WHY:  The walkthrough is the single source of truth for the pipeline's
+          human-readable narrative; DESIGN §6 requires that it always be
+          generatable from rule docstrings, never hand-edited.
+    TUNABLES: (none — pinned to config/cohort.example.yaml)
+    OUTPUT: docs/WALKTHROUGH.md
+    TRY:    change a rule's TRY line, rerun `snakemake walkthrough`, and
+            diff docs/WALKTHROUGH.md to confirm your edit propagated.
+    """
+    input:
+        script = _WALKTHROUGH_SCRIPT,
+        rules  = sorted(str(p) for p in (_AGNOSTIC / "workflow" / "rules").glob("*.smk")),
+    output:
+        md = _WALKTHROUGH_MD,
+    log:
+        f"{PATHS['logs']}/walkthrough.log",
+    shell:
+        r"""
+        python {input.script} --config """ + _WALKTHROUGH_CFG + r""" --write > {log} 2>&1
+        """
+
+
+rule walkthrough_check:
+    """
+    CI staleness check for docs/WALKTHROUGH.md.
+
+    WHAT: python scripts/py/render_walkthrough.py --check
+    WHY:  If someone edits a rule's docstring without regenerating the
+          walkthrough, this rule fails so the drift shows up before merge.
+    TUNABLES: (none)
+    OUTPUT: (no output — non-zero exit on stale)
+    TRY:    delete a line from docs/WALKTHROUGH.md and re-run — the check
+            should fail with a diff.
+    """
+    input:
+        script = _WALKTHROUGH_SCRIPT,
+        md     = _WALKTHROUGH_MD,
+        rules  = sorted(str(p) for p in (_AGNOSTIC / "workflow" / "rules").glob("*.smk")),
+    log:
+        f"{PATHS['logs']}/walkthrough_check.log",
+    shell:
+        r"""
+        python {input.script} --config """ + _WALKTHROUGH_CFG + r""" --check > {log} 2>&1
+        """
