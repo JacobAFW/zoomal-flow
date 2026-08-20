@@ -173,6 +173,47 @@ properties:
           (mirrors V1's Pen_clones_IBD.txt schema). null = combined table
           only.
 
+  introgression:
+    type: object
+    additionalProperties: true
+    description: |
+      Stage 5 — pairwise density-cloud introgression detection.
+      `pairs: "all"` is C(K,2) full density passes: quadratic compute AND a
+      multiple-comparison burden. See docs/introgression_analysis_spec.md.
+    properties:
+      window_size_bp:         { type: integer, minimum: 1 }
+      min_snps_per_window:    { type: integer, minimum: 1 }
+      min_cluster_n:          { type: integer, minimum: 2 }
+      min_samples_per_window: { type: integer, minimum: 0 }
+      per_cluster_min_pct:    { type: number,  minimum: 0, maximum: 1 }
+      pairs:
+        oneOf:
+          - { type: string, enum: [all] }
+          - type: array
+            items:
+              type: array
+              items: { type: string }
+              minItems: 2
+              maxItems: 2
+        description: '"all" for every C(K,2) pair, or an explicit [[Kx, Ky], …] list.'
+      pair_warn_threshold: { type: integer, minimum: 1 }
+      detection_rule:
+        type: string
+        enum: [absolute, relative]
+        description: absolute = V1's fixed density cutoffs; relative = deeper in the other cloud than its own.
+      contour_level_other: { type: number, minimum: 0 }
+      contour_level_own:   { type: number, minimum: 0 }
+      focal_group:
+        type: [string, "null"]
+        description: Value of the `geography` role for the unique-windows headline. null = skip the headline.
+      gene_family_filters:
+        type: array
+        items: { type: string }
+        description: Keywords matched against GFF attributes; matching windows are masked.
+      gff:
+        type: [string, "null"]
+        description: Optional annotation GFF. null = gene-family filter skipped with a logged note.
+
   selection:
     type: object
     additionalProperties: true

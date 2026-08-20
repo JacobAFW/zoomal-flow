@@ -71,6 +71,27 @@ ibd:
   min_cluster_n: 5
   focal_cluster: "Peninsular"         # slide-10 focus — extra pair-file to compare V1
 
+introgression:
+  window_size_bp: 10000
+  min_snps_per_window: 5
+  min_cluster_n: 5
+  min_samples_per_window: 2
+  per_cluster_min_pct: 0.05
+  # K = 3 here (Mf / Mn / Peninsular) → 3 pairs, comfortably under the warning
+  # threshold. Swap in an explicit list to focus, e.g. [["Peninsular", "Mf"]].
+  pairs: "all"
+  pair_warn_threshold: 15
+  detection_rule: "absolute"          # V1's rule; see spec §2.3 for `relative`
+  contour_level_other: 5.0e-4         # V1 find_introgression.R:241
+  contour_level_own:   5.0e-4         # V1 find_introgression.R:257-259
+  # Headline: windows introgressed uniquely in Aceh vs the rest of the cluster
+  # its samples fall in (Peninsular). Generalises V1's Aceh-vs-Peninsular step.
+  focal_group: "Aceh"
+  # P. knowlesi hypervariable multigene families. SICAvar + KIR produce
+  # false-positive introgression calls, so their windows are masked.
+  gene_family_filters: ["SICA", "KIR"]
+  gff: "data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff"
+
 selection:
   models:
     # V1's published iHS comparison — expected negative result (no candidate

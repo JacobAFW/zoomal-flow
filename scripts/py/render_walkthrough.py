@@ -238,6 +238,7 @@ STAGE_ORDER = [
     ("03_figures",          "Stage 3b — Structure figures"),
     ("04_ibd",              "Stage 4 — IBD (per-cluster hmmIBD + clonal detection)"),
     ("04_figures",          "Stage 4b — IBD figures"),
+    ("05_introgression",    "Stage 5 — Introgression (pairwise density-cloud detection)"),
     ("06_selection",        "Stage 6 — Selection (rehh iHS)"),
 ]
 

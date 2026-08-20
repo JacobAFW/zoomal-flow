@@ -62,6 +62,26 @@ ibd:
   min_cluster_n: 5              # skip hmmIBD on any cluster below this
   focal_cluster: null           # optional: emit an extra pair-shaped file for this cluster
 
+# Stage 5: introgression (pairwise density-cloud detection).
+# See docs/introgression_analysis_spec.md for the method and its caveats.
+# NOTE: `pairs: "all"` is C(K,2) comparisons, each a full density pass — the
+# cost grows quadratically in K and every extra contrast is another
+# multiple-comparison burden. The workflow warns above pair_warn_threshold.
+introgression:
+  window_size_bp: 10000         # window for the per-sample distance profile
+  min_snps_per_window: 5        # strict >: a window needs at least 6 called SNPs
+  min_cluster_n: 5              # clusters below this take no part in any pair
+  min_samples_per_window: 2     # strict >: drop windows carried by ≤ 2 samples (V1's n > 2)
+  per_cluster_min_pct: 0.05     # window must be called in ≥ 5% of the cluster
+  pairs: "all"                  # "all" (C(K,2)) | explicit [[Kx, Ky], …] list
+  pair_warn_threshold: 15       # runtime warning above this many pairs
+  detection_rule: "absolute"    # "absolute" (V1 default) | "relative" (see spec §2.3)
+  contour_level_other: 5.0e-4   # density level for "inside the other cluster"
+  contour_level_own:   5.0e-4   # density level for "inside its own cluster"
+  focal_group: null             # geography value for the unique-windows headline; null = skip
+  gene_family_filters: []       # attribute keywords masked from the GFF (e.g. hypervariable families)
+  gff: null                     # optional annotation; gene-family filter skipped if unset
+
 # Stage 6: selection scans (rehh iHS). Empty by default — add per-cohort
 # models in cohort.example.yaml or your own cohort config. Each model has
 #   name           - used for output directory

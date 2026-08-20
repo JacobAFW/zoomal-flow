@@ -71,17 +71,82 @@ snakemake --cores 8 --configfile path/to/my_cohort.yaml
 
 | Stage | File | Status |
 |---|---|---|
-| 0  setup       | `workflow/rules/00_setup.smk`     | implemented |
-| 1  QC (common) | `workflow/rules/01_qc.smk`        | implemented |
-| 1  QC (WGS)    | `workflow/rules/qc_wgs.smk`       | implemented |
-| 1  QC (microhap) | `workflow/rules/qc_microhap.smk` | stub (fails fast) |
-| 2–6, walkthrough generator, tiny-cohort VCF | — | later increments |
+| 0  setup            | `workflow/rules/00_setup.smk`       | implemented |
+| 1  QC (common)      | `workflow/rules/01_qc.smk`          | implemented |
+| 1  QC (WGS)         | `workflow/rules/qc_wgs.smk`         | implemented |
+| 1  QC (microhap)    | `workflow/rules/qc_microhap.smk`    | stub (fails fast) |
+| 2  MOI / Fws        | `workflow/rules/02_moi.smk`         | implemented (WGS path) |
+| 3  structure        | `workflow/rules/03_structure.smk`   | implemented |
+| 3b structure figures| `workflow/rules/03_figures.smk`     | implemented |
+| 4  IBD              | `workflow/rules/04_ibd.smk`         | implemented |
+| 4b IBD figures      | `workflow/rules/04_figures.smk`     | implemented |
+| 5  introgression    | `workflow/rules/05_introgression.smk` | implemented (see below) |
+| 6  selection (iHS)  | `workflow/rules/06_selection.smk`   | implemented |
+| Quarto report       | —                                    | later increment |
 
 Stage 0 produces: `outputs/setup/vcf_samples.txt`, `nuclear_contigs.txt`,
 `contig_map.tsv`, and a canonical role-renamed `outputs/metadata/samples.tsv`.
 Stage 1 (WGS) produces: `outputs/qc/snps.qc.vcf.gz` (the shared seam output),
 `outputs/qc/variant_count.txt`, and four QC density panels under
 `reports/figures/`.
+
+`docs/WALKTHROUGH.md` (generated from the rule docstrings) is the step-by-step
+tour of every rule, its tunables, and something to try at each step.
+
+---
+
+## Introgression (Stage 5) — read before you run it
+
+Stage 5 asks, per genomic window: does a sample carry the genetic signature of
+a cluster *other* than the one it is assigned to? It works **per cluster pair**
+— for (Kx, Ky) it measures every sample-window's distance to both clusters'
+consensus alleles, draws a 2D kernel-density cloud per cluster in that distance
+space, and flags a window when a sample lands in the other cluster's cloud
+rather than its own. The headline output is the set of windows introgressed
+uniquely in a configurable `focal_group`.
+
+Full method, design decisions and validation status:
+**`docs/introgression_analysis_spec.md`**.
+
+Two things to know before running it:
+
+- **This stage has never been validated against a reference output.** V1's
+  introgression script was written after the HPC run and its own header records
+  that reference outputs were unavailable. Correctness here rests on the
+  synthetic positive control in `tests/tiny_cohort/` (a known injected
+  introgression event that the pipeline must recover exactly), not on
+  reproducing V1. Treat real-cohort numbers as a method result to review, not a
+  validated figure.
+- **`pairs: "all"` is quadratic, in two different ways.** All-pairs means
+  C(K,2) comparisons: K=3 → 3, K=6 → 15, K=8 → 28, K=10 → 45. Each is a full
+  density pass, so *compute* grows fast. Just as importantly, each is another
+  contrast: run 45 of them and windows will clear any fixed threshold by
+  chance, and not every cluster pair is a biologically meaningful comparison in
+  the first place. The workflow prints a warning above
+  `introgression.pair_warn_threshold`; the fix is to set an explicit
+  `introgression.pairs: [[Kx, Ky], …]` list for the contrasts you actually
+  intend to interpret.
+
+The detection call is pluggable (`introgression.detection_rule`): `absolute`
+(V1's fixed density cutoffs, the shipped default) or `relative` (deeper in the
+other cluster's cloud than in its own — no absolute cutoff to drift when one
+cluster is more diffuse than another). To see how the two behave on data with
+known ground truth:
+
+```bash
+Rscript scripts/R/introgression_rule_sweep.R \
+  --genotype-table tests/tiny_cohort/outputs/ibd/combined/hmmIBD_input.tsv \
+  --clusters       tests/tiny_cohort/outputs/structure/admix_clusters.tsv \
+  --contig-map     tests/tiny_cohort/outputs/setup/contig_map.tsv \
+  --truth          tests/tiny_cohort/data/introgression_truth.tsv \
+  --pair           RegionA1__RegionB1 \
+  --window-size 10000 --min-snps 5 \
+  --out tests/tiny_cohort/outputs/introgression/detection_rule_sweep.tsv
+```
+
+It reports detection rate against false positives across a threshold grid. It
+changes no defaults — picking a rule is a judgement call, and the sweep is the
+evidence for making it.
 
 ---
 
@@ -121,15 +186,21 @@ crash the pipeline.
 ## Tests
 
 ```bash
-# Unit + integration test for contigs_from_fai (acceptance criterion §7).
-python tests/test_contigs_from_fai.py
+# Everything (config validation, contig derivation, walkthrough parser,
+# Stage 5 units + the introgression positive control).
+pytest tests/
 
-# Negative tests for config schema validation.
-python tests/test_config_validation.py
+# Individual suites also run standalone, without pytest:
+python tests/test_contigs_from_fai.py     # contigs_from_fai (acceptance §7)
+python tests/test_config_validation.py    # config-schema negative tests
+Rscript tests/R/test_introgression_units.R  # Stage 5 component units
 ```
 
-Both run without pytest if it isn't installed; they shell out to the helpers
-they exercise.
+`tests/test_introgression.py` is the Stage 5 **positive control**: the tiny
+cohort injects a known introgression event and the test asserts the pipeline
+recovers exactly it — right window, right samples, nobody else. It builds the
+tiny cohort's Stage 5 targets with snakemake if they are missing (seconds when
+they are already there), and skips if the toolchain isn't on PATH.
 
 ---
 

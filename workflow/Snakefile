@@ -78,6 +78,7 @@ include: "rules/03_structure.smk"
 include: "rules/03_figures.smk"
 include: "rules/04_ibd.smk"
 include: "rules/04_figures.smk"
+include: "rules/05_introgression.smk"
 include: "rules/06_selection.smk"
 
 # --------------------------------------------------------------------------
@@ -163,6 +164,29 @@ if ROLES.get("date"):
     FINAL_TARGETS += [
         f"{PATHS['reports']}/figures/clonal_temporal.png",
         f"{PATHS['reports']}/figures/clonal_temporal.svg",
+    ]
+
+# Stage 5 introgression. Per-pair calls are expanded from the assign_clusters
+# checkpoint (introgression_pair_targets in 05_introgression.smk); the headline
+# + its figure are wired only when introgression.focal_group is set.
+FINAL_TARGETS += [
+    introgression_pair_targets,
+    f"{PATHS['outputs']}/introgression/introgressed_windows_filtered.tsv",
+    f"{PATHS['outputs']}/introgression/filter_audit.tsv",
+    f"{PATHS['outputs']}/introgression/windows_by_cluster.tsv",
+    f"{PATHS['reports']}/figures/introgression_shoulder.png",
+    f"{PATHS['reports']}/figures/introgression_shoulder.svg",
+]
+if ROLES.get("geography"):
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/introgression/introgression_by_geography.tsv",
+    ]
+if INTRO_FOCAL:
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/introgression/unique_windows_in_{INTRO_FOCAL}_with_freq_and_coords.tsv",
+        f"{PATHS['outputs']}/introgression/unique_windows_per_chrom_{INTRO_FOCAL}_vs_rest.tsv",
+        f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.png",
+        f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.svg",
     ]
 
 # Stage 6 selection outputs — one per configured model.

@@ -1,0 +1,7 @@
+sample_id	donor	contig	window_bin	window_start	window_end	n_injected_snps
+sampA_20	sampB_01	chr2	45000	40000	49999	30
+sampA_21	sampB_01	chr2	45000	40000	49999	30
+sampA_22	sampB_01	chr2	45000	40000	49999	30
+sampA_23	sampB_01	chr2	45000	40000	49999	30
+sampA_24	sampB_01	chr2	45000	40000	49999	30
+sampA_25	sampB_01	chr2	45000	40000	49999	30

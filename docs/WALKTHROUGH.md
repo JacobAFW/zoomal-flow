@@ -4,7 +4,7 @@
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
 - Config: `config/cohort.example.yaml`
-- Commit: `f1b3b7d-dirty`
+- Commit: `a711dbf-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -981,6 +981,114 @@ ibd.focal_cluster set)`
 
 **TRY.** drop ibd.clonal_ibd_threshold to 0.5 to see near-clonal
 structure; the connected-component count will spike.
+
+---
+
+## Stage 5 — Introgression (pairwise density-cloud detection)
+
+Source: `workflow/rules/05_introgression.smk`
+
+### `introgression_pair`
+
+Detect introgressed windows for one cluster pair, in both directions.
+
+**WHAT.** scripts/R/introgression_pair.R — subsets the combined genotype table
+to the pair's samples, computes both clusters' consensus alleles and
+each sample-window's percent-mismatch distance to both, builds the 2D
+kernel-density cloud per cluster, and calls introgression via
+scripts/R/introgression_detect.R (Kx-looks-like-Ky AND
+Ky-looks-like-Kx).
+
+**WHY.** V1's detection was intrinsically three-cluster — two fixed distance
+axes with Mn/Mf/Peninsular welded in by name — and could not scale as
+ADMIXTURE K climbs. One clean 2-cluster density plot per pair keeps
+the identical method, drops every cluster-name hardcode, and works at
+any K. V1's three-way "ambiguous between Mf and Mn" case comes back
+at aggregation as "flagged in both the Kx-Mf and Kx-Mn pairs".
+Snakemake fans the {pair} wildcard across cores; there is no R-level
+parallelism.
+
+**TUNABLES.**
+
+- `introgression.window_size_bp` = `10000`
+- `introgression.min_snps_per_window` = `5`
+- `introgression.detection_rule` = `'absolute'`
+- `introgression.contour_level_other` = `0.0005`
+- `introgression.contour_level_own` = `0.0005`
+- `introgression.pairs` = `'all'`
+- `introgression.min_cluster_n` = `5`
+
+**OUTPUT.** `{outputs}/introgression/pairs/{{pair}}.tsv`
+
+**TRY.** switch introgression.detection_rule to "relative" and diff the call
+count for one pair — `relative` asks "is this window deeper in the
+other cluster's cloud than in its own?" and has no absolute cutoff
+to drift when one cluster is more diffuse than the other.
+
+---
+
+### `introgression_aggregate`
+
+Stitch every pair's calls and apply the four cross-dataset filters.
+
+**WHAT.** scripts/R/introgression_aggregate.R — concatenates the per-pair call
+files, then filters in V1's order: dataset low-n (> min_samples_per_
+window samples), per-cluster minimum percentage, gene-family mask
+from the GFF, hypervariable (window called in more than one cluster).
+Writes the filtered call table, a per-step audit, and the per-cluster
+/ per-sample / per-chromosome / per-geography summaries.
+
+**WHY.** the per-pair step is deliberately local. Every judgement that needs
+the whole dataset — how many samples share a window, whether it is
+hypervariable across clusters, whether it sits in a hypervariable
+gene family — has to happen once, after the fan-out. The gene-family
+filter is config keywords against the GFF rather than V1's literal
+SICA|KIR grep, and skips itself with a logged note when no GFF is set.
+
+**TUNABLES.**
+
+- `introgression.min_samples_per_window` = `2`
+- `introgression.per_cluster_min_pct` = `0.05`
+- `introgression.gene_family_filters` = `['SICA', 'KIR']`
+- `introgression.gff` = `'data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff'`
+- `introgression.window_size_bp` = `10000`
+
+**OUTPUT.** `{outputs}/introgression/introgressed_windows_filtered.tsv,
+{outputs}/introgression/filter_audit.tsv,
+{outputs}/introgression/window_sample_counts_raw.tsv,
+{outputs}/introgression/windows_by_cluster.tsv,
+{outputs}/introgression/windows_across_chrom.tsv,
+{outputs}/introgression/average_windows_for_clusters.tsv,
+{outputs}/introgression/intro_per_sample_summary.tsv`
+
+**TRY.** read filter_audit.tsv top-to-bottom — it shows how many calls,
+windows and samples each filter removed. If the hypervariable step
+is eating most of your signal, the clusters are probably sharing
+variable regions rather than exchanging haplotypes.
+
+---
+
+### `plot_introgression_shoulder`
+
+Windows ranked by how many samples carry them, before any filtering.
+
+**WHAT.** scripts/R/plot_introgression_shoulder.R over
+window_sample_counts_raw.tsv, with the configured threshold drawn in.
+
+**WHY.** this is the diagnostic that justifies the dataset low-n cut. The
+curve's shoulder is where "several samples share this window" turns
+into "one sample has it"; the dashed line shows whether
+min_samples_per_window sits on that shoulder or somewhere arbitrary.
+
+**TUNABLES.**
+
+- `introgression.min_samples_per_window` = `2`
+
+**OUTPUT.** `{reports}/figures/introgression_shoulder.png/.svg`
+
+**TRY.** if the dashed line sits well left of the shoulder you are keeping
+singleton noise; move min_samples_per_window right and re-run the
+aggregate step (the per-pair calls are cached, so it is seconds).
 
 ---
 

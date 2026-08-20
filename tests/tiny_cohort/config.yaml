@@ -55,6 +55,25 @@ ibd:
   min_cluster_n: 5
   focal_cluster: null
 
+# Stage 5: the two clusters (RegionA1 / RegionB1) give exactly one
+# pair. focal_group is RegionA2 — group A's minority geography, which
+# is also the set of samples carrying the injected window, so the
+# headline is testable against data/introgression_truth.tsv.
+introgression:
+  window_size_bp: 10000
+  min_snps_per_window: 5
+  min_cluster_n: 5
+  min_samples_per_window: 2
+  per_cluster_min_pct: 0.05
+  pairs: "all"
+  pair_warn_threshold: 15
+  detection_rule: "absolute"
+  contour_level_other: 5.0e-4
+  contour_level_own:   5.0e-4
+  focal_group: "RegionA2"
+  gene_family_filters: []      # no annotation in the fixture
+  gff: null
+
 selection:
   models: []
 
