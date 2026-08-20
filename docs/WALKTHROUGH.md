@@ -4,7 +4,7 @@
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
 - Config: `config/cohort.example.yaml`
-- Commit: `a711dbf-dirty`
+- Commit: `3f5b6ff-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -1015,15 +1015,21 @@ parallelism.
 - `introgression.detection_rule` = `'absolute'`
 - `introgression.contour_level_other` = `0.0005`
 - `introgression.contour_level_own` = `0.0005`
+- `introgression.distance_margin` = `15`
+- `introgression.distance_adaptive` = `False`
+- `introgression.distance_adaptive_quantile` = `0.9`
 - `introgression.pairs` = `'all'`
 - `introgression.min_cluster_n` = `5`
 
 **OUTPUT.** `{outputs}/introgression/pairs/{{pair}}.tsv`
 
-**TRY.** switch introgression.detection_rule to "relative" and diff the call
-count for one pair — `relative` asks "is this window deeper in the
-other cluster's cloud than in its own?" and has no absolute cutoff
-to drift when one cluster is more diffuse than the other.
+**TRY.** switch introgression.detection_rule to "distance" and diff the call
+count for one pair. `distance` never fits a density surface — it
+asks only whether the window matches the OTHER cluster's consensus
+at least `distance_margin` percentage points better than its own —
+so unlike `absolute`/`relative` its calls cannot move when cohort
+composition changes. Set `distance_adaptive: true` to derive that
+margin from the clusters' own spread instead of a fixed number.
 
 ---
 
@@ -1049,6 +1055,7 @@ SICA|KIR grep, and skips itself with a logged note when no GFF is set.
 
 - `introgression.min_samples_per_window` = `2`
 - `introgression.per_cluster_min_pct` = `0.05`
+- `introgression.per_cluster_min_samples` = `0`
 - `introgression.gene_family_filters` = `['SICA', 'KIR']`
 - `introgression.gff` = `'data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff'`
 - `introgression.window_size_bp` = `10000`

@@ -123,6 +123,49 @@ def test_injected_window_has_no_extra_samples(stage5):
     assert not extra, f"untouched samples called at {window}: {sorted(extra)}"
 
 
+def test_distance_rule_recovers_the_injected_window(stage5, tmp_path):
+    """
+    The deterministic `distance` rule must clear the same recovery gate as the
+    density rules: every injected sample called at the injected window, nobody
+    else called there.
+
+    The fixture cannot DISCRIMINATE between rules — every rule and threshold it
+    has been swept at recovers all six injections (see
+    tests/tiny_cohort/outputs/introgression/detection_rule_sweep.tsv). That is
+    what the Malay benchmark and the cluster-size test are for. This test only
+    asserts `distance` is not broken.
+    """
+    if not _toolchain_ready():
+        pytest.skip("pipeline toolchain not on PATH (source envs/activate.sh)")
+    out = tmp_path / "distance_pair.tsv"
+    proc = subprocess.run(
+        ["Rscript", str(AGNOSTIC / "scripts" / "R" / "introgression_pair.R"),
+         "--genotype-table", str(TINY / "outputs" / "ibd" / "combined" / "hmmIBD_input.tsv"),
+         "--clusters",       str(TINY / "outputs" / "structure" / "admix_clusters.tsv"),
+         "--pair",           "RegionA1__RegionB1",
+         "--window-size",    "10000",
+         "--min-snps",       "5",
+         "--detection-rule", "distance",
+         "--contour-level-other", "5e-4",
+         "--contour-level-own",   "5e-4",
+         "--distance-margin",     "15",
+         "--distance-adaptive",   "false",
+         "--out", str(out)],
+        cwd=AGNOSTIC, capture_output=True, text=True, timeout=900,
+    )
+    assert proc.returncode == 0, proc.stdout[-4000:] + proc.stderr[-4000:]
+
+    window = _expected_window_id(stage5)
+    rows   = _read_tsv(out)
+    called = {r["SAMPLE"] for r in rows if r["WINDOW"] == window}
+    assert called == set(stage5["injected_samples"]), (
+        f"distance rule at {window}: got {sorted(called)}, "
+        f"want {stage5['injected_samples']}")
+    # The rule fits no density surface, so it reports no density levels.
+    assert all(r["LEVEL_OWN"] == "NA" for r in rows), \
+        "distance rule emitted density levels — it should not build a surface"
+
+
 def test_call_direction_is_a_to_b(stage5):
     """The call points the right way: an A-cluster sample looking like B."""
     window = _expected_window_id(stage5)

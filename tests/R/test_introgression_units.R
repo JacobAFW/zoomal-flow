@@ -7,7 +7,9 @@
 #   - dominant_alleles()           per-cluster consensus + tie handling
 #   - window_distances()           percent-mismatch distance + min-SNP cut
 #   - contour_max_level()          point-in-polygon membership on toy contours
-#   - is_introgressed()            BOTH detection rules on toy contours
+#   - is_introgressed()            ALL THREE detection rules
+#   - distance_calibration()       the adaptive rule's per-pair quantile inputs
+#   - pair_calls()                 both-directions orientation + output schema
 #
 # Deliberately dependency-free (no testthat in the vvg-box env): a tiny
 # ok()/expect_equal() harness, non-zero exit on any failure. Run directly or
@@ -240,6 +242,124 @@ cont_overlap <- bind_rows(square("B", 1e-4,  "b-ov",  0, 40),
 ok(!is_introgressed(tibble(x = 20, y = 20), cont_a, cont_overlap, rel_params)$introgressed,
    "equally core to both clusters -> not called (strict >)")
 
+
+# --------------------------------------------------------------------------
+section("is_introgressed — distance rule (deterministic, fixed margin)")
+# The distance rule reads d_own / d_other only; the contours are ignored
+# entirely (passed as NULL below to prove no density surface is consulted).
+dist_params <- list(detection_rule = "distance", distance_margin = 15)
+
+# Clearly closer to the OTHER consensus: 30% from own, 8% from other.
+ok(is_introgressed(tibble(x = 0, y = 0, d_own = 30, d_other = 8),
+                   NULL, NULL, dist_params)$introgressed,
+   "clearly closer to the other consensus -> introgressed")
+# A core-own point: 5% from own, 25% from other.
+ok(!is_introgressed(tibble(x = 0, y = 0, d_own = 5, d_other = 25),
+                    NULL, NULL, dist_params)$introgressed,
+   "core-own point -> not called")
+# Margin boundary: difference exactly the margin counts (>=), one point under
+# does not.
+eq(is_introgressed(tibble(x = 0, y = 0,
+                          d_own   = c(30,   29.9, 30.1),
+                          d_other = c(15,   15,   15)),
+                   NULL, NULL, dist_params)$introgressed,
+   c(TRUE, FALSE, TRUE), "margin boundary is inclusive (>=), one pp under is not")
+# Raising the margin retracts a marginal call; lowering it admits one.
+ok(!is_introgressed(tibble(x = 0, y = 0, d_own = 30, d_other = 8), NULL, NULL,
+                    modifyList(dist_params, list(distance_margin = 25)))$introgressed,
+   "raising distance_margin retracts a marginal call")
+ok(is_introgressed(tibble(x = 0, y = 0, d_own = 12, d_other = 8), NULL, NULL,
+                   modifyList(dist_params, list(distance_margin = 3)))$introgressed,
+   "lowering distance_margin admits a shallower call")
+# No density surface is built, so the level columns are NA by contract.
+r_dist <- is_introgressed(tibble(x = 0, y = 0, d_own = 30, d_other = 8),
+                          cont_a, cont_b, dist_params)
+ok(is.na(r_dist$level_own) && is.na(r_dist$level_other),
+   "distance rule reports NA density levels (it fits no surface)")
+# Missing distances are a caller error, not a silent FALSE.
+ok(inherits(tryCatch(is_introgressed(tibble(x = 1, y = 1), NULL, NULL, dist_params),
+                     error = function(e) e), "error"),
+   "distance rule without d_own/d_other raises an error")
+# Determinism: identical input, identical output, no state carried between calls.
+eq(is_introgressed(tibble(x = 0, y = 0, d_own = 30, d_other = 8),
+                   NULL, NULL, dist_params)$introgressed,
+   is_introgressed(tibble(x = 0, y = 0, d_own = 30, d_other = 8),
+                   NULL, NULL, dist_params)$introgressed,
+   "same input -> same output")
+
+section("is_introgressed — distance rule (adaptive margin)")
+# Cluster A sits 2-10% from its own consensus, cluster B 3-11% from its own.
+cal <- list(own_self = seq(2, 10, length.out = 50),
+            other_self = seq(3, 11, length.out = 50))
+ad_params <- list(detection_rule = "distance", distance_adaptive = TRUE,
+                  distance_adaptive_quantile = 0.9, distance_calibration = cal)
+# q(0.9) is 9.2 for own and 10.2 for other.
+ok(is_introgressed(tibble(x = 0, y = 0, d_own = 20, d_other = 6),
+                   NULL, NULL, ad_params)$introgressed,
+   "atypically far from own + typical for other -> introgressed")
+ok(!is_introgressed(tibble(x = 0, y = 0, d_own = 4, d_other = 6),
+                    NULL, NULL, ad_params)$introgressed,
+   "typical distance from its own cluster -> not called")
+ok(!is_introgressed(tibble(x = 0, y = 0, d_own = 20, d_other = 18),
+                    NULL, NULL, ad_params)$introgressed,
+   "far from own but also atypical for the other -> not called")
+ok(!is_introgressed(tibble(x = 0, y = 0, d_own = 5, d_other = 6),
+                    NULL, NULL, ad_params)$introgressed,
+   "closer to its own than to the other -> not called")
+# A tighter own cluster lowers the bar for "atypical".
+tight <- modifyList(ad_params, list(
+  distance_calibration = list(own_self = seq(1, 2, length.out = 50),
+                              other_self = cal$other_self)))
+ok(is_introgressed(tibble(x = 0, y = 0, d_own = 6, d_other = 5),
+                   NULL, NULL, tight)$introgressed,
+   "a tighter own cluster makes a smaller departure atypical (self-calibrating)")
+ok(inherits(tryCatch(is_introgressed(tibble(x = 0, y = 0, d_own = 20, d_other = 6),
+                                     NULL, NULL,
+                                     list(detection_rule = "distance",
+                                          distance_adaptive = TRUE)),
+                     error = function(e) e), "error"),
+   "adaptive mode without a calibration raises an error")
+
+section("distance_calibration")
+cal_tbl <- tibble(SAMPLE  = c("a1", "a2", "b1", "b2"),
+                  Cluster = c("A", "A", "B", "B"),
+                  DIST_X  = c(2, 4, 20, 22),
+                  DIST_Y  = c(20, 22, 3, 5))
+cc <- distance_calibration(cal_tbl, own = "A", other = "B", kx = "A", ky = "B")
+eq(cc$own_self,   c(2, 4), "own_self = A's distance to A (DIST_X)")
+eq(cc$other_self, c(3, 5), "other_self = B's distance to B (DIST_Y)")
+cc2 <- distance_calibration(cal_tbl, own = "B", other = "A", kx = "A", ky = "B")
+eq(cc2$own_self,   c(3, 5), "orientation flips with the direction")
+eq(cc2$other_self, c(2, 4), "orientation flips with the direction (other)")
+
+section("pair_calls — orientation and schema")
+pc_tbl <- tibble(
+  SAMPLE  = c("a1", "a2", "b1"),
+  Cluster = c("A",  "A",  "B"),
+  CHROM   = c(1L, 1L, 1L),
+  BIN     = c(5000, 15000, 5000),
+  WINDOW  = c("w1_5000", "w1_15000", "w1_5000"),
+  N_SNPS  = c(10L, 10L, 10L),
+  DIST_X  = c(2,  30,  25),      # a2 looks like B; b1 looks like A
+  DIST_Y  = c(28,  4,   3)
+)
+pc <- pair_calls(pc_tbl, "A", "B", contours = NULL,
+                 params = list(detection_rule = "distance", distance_margin = 15))
+eq(sort(pc$SAMPLE), c("a2"), "only the A sample that looks like B is called")
+eq(pc$DIRECTION, "A_like_B", "direction is labelled own_like_other")
+eq(pc$DIST_OWN,   30, "DIST_OWN is the distance to the sample's OWN cluster")
+eq(pc$DIST_OTHER,  4, "DIST_OTHER is the distance to the other cluster")
+eq(names(pc), PAIR_CALL_COLS, "output schema matches PAIR_CALL_COLS")
+# Flip the injected signal onto the B sample and confirm the reverse direction.
+pc_rev <- pc_tbl; pc_rev$DIST_X[3] <- 3; pc_rev$DIST_Y[3] <- 25
+pc2 <- pair_calls(pc_rev, "A", "B", contours = NULL,
+                  params = list(detection_rule = "distance", distance_margin = 15))
+eq(sort(pc2$DIRECTION), c("A_like_B", "B_like_A"),
+   "both directions are called from one table")
+eq(pc2$DIST_OWN[pc2$SAMPLE == "b1"], 25,
+   "the reverse direction reads DIST_Y as its own distance")
+
+# --------------------------------------------------------------------------
 section("is_introgressed — errors")
 ok(inherits(tryCatch(is_introgressed(tibble(x = 1, y = 1), cont_a, cont_b,
                                      list(detection_rule = "nonsense")),

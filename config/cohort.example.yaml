@@ -77,13 +77,21 @@ introgression:
   min_cluster_n: 5
   min_samples_per_window: 2
   per_cluster_min_pct: 0.05
+  per_cluster_min_samples: 0          # V1-Indo used the percentage alone
   # K = 3 here (Mf / Mn / Peninsular) → 3 pairs, comfortably under the warning
   # threshold. Swap in an explicit list to focus, e.g. [["Peninsular", "Mf"]].
   pairs: "all"
   pair_warn_threshold: 15
-  detection_rule: "absolute"          # V1's rule; see spec §2.3 for `relative`
+  detection_rule: "absolute"          # V1's rule; `relative` / `distance` in spec §2.3
   contour_level_other: 5.0e-4         # V1 find_introgression.R:241
   contour_level_own:   5.0e-4         # V1 find_introgression.R:257-259
+  # Unused while detection_rule is "absolute"; shown so the deterministic rule
+  # is one edit away. `distance` calls a window introgressed when it matches
+  # the other cluster's consensus by at least `distance_margin` percentage
+  # points, with no density surface to drift as the cohort changes.
+  distance_margin: 15
+  distance_adaptive: false
+  distance_adaptive_quantile: 0.9
   # Headline: windows introgressed uniquely in Aceh vs the rest of the cluster
   # its samples fall in (Peninsular). Generalises V1's Aceh-vs-Peninsular step.
   focal_group: "Aceh"

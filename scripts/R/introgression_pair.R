@@ -35,7 +35,15 @@
 #     --detection-rule absolute \
 #     --contour-level-other 5e-4 \
 #     --contour-level-own   5e-4 \
+#     --distance-margin 15 \
+#     --distance-adaptive false \
+#     --distance-adaptive-quantile 0.9 \
 #     --out            outputs/introgression/pairs/Mf__Mn.tsv
+#
+# Under `--detection-rule distance` the density surface is never built: that
+# rule decides from the raw per-window distances, so a contour pass would be
+# wasted work AND would reintroduce the cohort dependence the rule exists to
+# avoid. The LEVEL_OWN / LEVEL_OTHER output columns are NA in that mode.
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -68,11 +76,25 @@ pair_id     <- args[["pair"]]
 window_size <- as.integer(args[["window-size"]])
 min_snps    <- as.integer(args[["min-snps"]])
 out_tsv     <- args[["out"]]
+# `distance_*` are optional so an existing caller that only passes the density
+# args keeps working; the defaults mirror config/config.yaml.
+as_logical_arg <- function(x, default = FALSE) {
+  if (is.null(x)) return(default)
+  isTRUE(tolower(as.character(x)) %in% c("true", "t", "yes", "1"))
+}
 det_params  <- list(
   detection_rule      = args[["detection-rule"]],
   contour_level_other = as.numeric(args[["contour-level-other"]]),
-  contour_level_own   = as.numeric(args[["contour-level-own"]])
+  contour_level_own   = as.numeric(args[["contour-level-own"]]),
+  distance_margin     = as.numeric(args[["distance-margin"]] %||% 15),
+  distance_adaptive   = as_logical_arg(args[["distance-adaptive"]]),
+  distance_adaptive_quantile =
+    as.numeric(args[["distance-adaptive-quantile"]] %||% 0.9)
 )
+if (!det_params$detection_rule %in% DETECTION_RULES) {
+  stop("--detection-rule must be one of: ", paste(DETECTION_RULES, collapse = ", "),
+       " (got: ", det_params$detection_rule, ")")
+}
 
 # The {pair} wildcard encodes (Kx, Ky) as "Kx__Ky" — a double underscore, so
 # single-underscore cluster labels survive the round trip.
@@ -145,61 +167,47 @@ dist_tbl <- window_distances(gt_long, consensus, kx, ky,
                              window_size_bp = window_size, min_snps = min_snps)
 message(sprintf("[introgression_pair] %s: %d sample-windows (>%d SNPs, non-tied distances)",
                 pair_id, nrow(dist_tbl), min_snps))
-if (nrow(dist_tbl) < 10) write_empty("too few sample-windows for a density estimate")
+if (nrow(dist_tbl) < 10) write_empty("too few sample-windows to call on")
 
 # -- core 2: 2D density contours per cluster -------------------------------
-dens <- density_contours(dist_tbl, kx, ky)
-if (nrow(dens$points) != nrow(dist_tbl)) {
-  stop("[introgression_pair] ggplot point layer lost rows (",
-       nrow(dens$points), " vs ", nrow(dist_tbl), ") — cannot align calls")
-}
-lvl_counts <- dens$contours %>% count(cluster, name = "n_vertices")
-message("[introgression_pair] contour vertices: ",
-        paste(sprintf("%s=%d", lvl_counts$cluster, lvl_counts$n_vertices),
-              collapse = ", "))
+# Skipped entirely under `distance`: that rule reads the raw distances, so a
+# contour pass would be wasted work and would put the cohort-dependent surface
+# back into a decision built to avoid it.
+contours <- setNames(vector("list", 2), c(kx, ky))
+if (rule_needs_density(det_params$detection_rule)) {
+  dens <- density_contours(dist_tbl, kx, ky)
+  if (nrow(dens$points) != nrow(dist_tbl)) {
+    stop("[introgression_pair] ggplot point layer lost rows (",
+         nrow(dens$points), " vs ", nrow(dist_tbl), ") — cannot align calls")
+  }
+  lvl_counts <- dens$contours %>% count(cluster, name = "n_vertices")
+  message("[introgression_pair] contour vertices: ",
+          paste(sprintf("%s=%d", lvl_counts$cluster, lvl_counts$n_vertices),
+                collapse = ", "))
 
-cont_x <- dens$contours %>% filter(cluster == kx)
-cont_y <- dens$contours %>% filter(cluster == ky)
-if (nrow(cont_x) == 0 || nrow(cont_y) == 0) {
-  write_empty("one cluster produced no density contour (too few / too tied points)")
-}
+  contours[[kx]] <- dens$contours %>% filter(cluster == kx)
+  contours[[ky]] <- dens$contours %>% filter(cluster == ky)
+  if (nrow(contours[[kx]]) == 0 || nrow(contours[[ky]]) == 0) {
+    write_empty("one cluster produced no density contour (too few / too tied points)")
+  }
 
-# The point layer uses the identity stat on continuous scales, so its built
-# x/y ARE the distance columns. Test against dist_tbl directly rather than
-# relying on ggplot_build preserving row order; the row-count and value checks
-# above/below confirm the built layer is the same point set V1 tested.
-stopifnot(isTRUE(all.equal(sort(dens$points$x), sort(dist_tbl$DIST_X))))
-pts <- tibble(x = dist_tbl$DIST_X, y = dist_tbl$DIST_Y)
+  # The point layer uses the identity stat on continuous scales, so its built
+  # x/y ARE the distance columns. Test against dist_tbl directly rather than
+  # relying on ggplot_build preserving row order; the row-count and value
+  # checks above confirm the built layer is the same point set V1 tested.
+  stopifnot(isTRUE(all.equal(sort(dens$points$x), sort(dist_tbl$DIST_X))))
+} else {
+  message("[introgression_pair] rule '", det_params$detection_rule,
+          "' needs no density surface — contour step skipped")
+}
 
 # -- detection, both directions -------------------------------------------
 # Direction 1: a Kx sample whose window looks like Ky ("Kx_like_Ky").
 # Direction 2: a Ky sample whose window looks like Kx.
-call_direction <- function(own, other, cont_own, cont_other) {
-  idx <- which(dist_tbl$Cluster == own)
-  if (length(idx) == 0) return(NULL)
-  res <- is_introgressed(pts[idx, , drop = FALSE], cont_own, cont_other, det_params)
-  dist_tbl[idx, ] %>%
-    mutate(
-      LEVEL_OWN   = res$level_own,
-      LEVEL_OTHER = res$level_other,
-      HIT         = res$introgressed,
-      OTHER       = other,
-      DIRECTION   = paste0(own, "_like_", other),
-      # DIST_OWN / DIST_OTHER are the pair's two axes relabelled relative to
-      # the sample's own cluster, so both directions share one schema.
-      DIST_OWN    = if (own == kx) DIST_X else DIST_Y,
-      DIST_OTHER  = if (own == kx) DIST_Y else DIST_X
-    ) %>%
-    filter(HIT) %>%
-    transmute(PAIR = pair_id, SAMPLE, Cluster, OTHER, DIRECTION,
-              CHROM, BIN, WINDOW, N_SNPS,
-              DIST_OWN, DIST_OTHER, LEVEL_OWN, LEVEL_OTHER)
-}
-
-calls <- bind_rows(
-  call_direction(kx, ky, cont_x, cont_y),
-  call_direction(ky, kx, cont_y, cont_x)
-)
+# pair_calls() (introgression_detect.R) owns the orientation, the adaptive
+# rule's per-pair calibration, and the output schema, so the pipeline and the
+# Malay benchmark harness call introgression identically.
+calls <- pair_calls(dist_tbl, kx, ky, contours, det_params, pair_id = pair_id)
 
 if (is.null(calls) || nrow(calls) == 0) {
   write_empty("no introgressed sample-windows called")
@@ -208,10 +216,19 @@ if (is.null(calls) || nrow(calls) == 0) {
 calls <- calls %>% arrange(CHROM, BIN, Cluster, SAMPLE)
 write_tsv(calls, out_tsv)
 
-cat(sprintf(paste0("\n[introgression_pair] %s (rule=%s, other>=%g, own>=%g): ",
+rule_desc <- if (det_params$detection_rule == "distance") {
+  if (isTRUE(det_params$distance_adaptive)) {
+    sprintf("rule=distance, adaptive q=%g", det_params$distance_adaptive_quantile)
+  } else {
+    sprintf("rule=distance, margin>=%g pp", det_params$distance_margin)
+  }
+} else {
+  sprintf("rule=%s, other>=%g, own>=%g", det_params$detection_rule,
+          det_params$contour_level_other, det_params$contour_level_own)
+}
+cat(sprintf(paste0("\n[introgression_pair] %s (%s): ",
                    "%d sample-window calls across %d windows / %d samples\n"),
-            pair_id, det_params$detection_rule,
-            det_params$contour_level_other, det_params$contour_level_own,
+            pair_id, rule_desc,
             nrow(calls), n_distinct(calls$WINDOW), n_distinct(calls$SAMPLE)))
 calls %>% count(DIRECTION, name = "n_calls") %>%
   mutate(line = sprintf("  %-30s %d", DIRECTION, n_calls)) %>%

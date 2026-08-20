@@ -8,8 +8,16 @@
 #         1. dataset low-n     window must be called in more than
 #                              `min_samples_per_window` samples (V1: > 2)
 #         2. per-cluster low-n window must be called in at least
-#                              ceiling(cluster_n * per_cluster_min_pct)
-#                              of that cluster's samples (V1: 5%)
+#                              max(ceiling(cluster_n * per_cluster_min_pct),
+#                                  per_cluster_min_samples)
+#                              of that cluster's samples. V1-Indo used 5% and
+#                              no absolute floor (per_cluster_min_samples: 0,
+#                              the default, reproduces it exactly). The
+#                              published Malay analysis used an ABSOLUTE
+#                              `n > 5` instead, which a percentage alone cannot
+#                              express across clusters of different sizes — set
+#                              per_cluster_min_pct: 0 and
+#                              per_cluster_min_samples: 6 to reproduce that.
 #         3. gene family       windows overlapping any GFF feature whose
 #                              attribute matches a `gene_family_filters`
 #                              keyword are masked (V1: literal SICAvar + KIR)
@@ -44,6 +52,7 @@
 #     --window-size 10000 \
 #     --min-samples-per-window 2 \
 #     --per-cluster-min-pct    0.05 \
+#     --per-cluster-min-samples 0 \
 #     --gff         data/reference/annotation.gff   # or NULL
 #     --fai         data/reference/ref.fasta.fai \
 #     --gene-family-filters "SICA,KIR"              # or "" to disable
@@ -85,6 +94,9 @@ if (length(call_files) == 0) stop("No per-pair call files given")
 window_size  <- as.integer(args[["window-size"]])
 min_samp_win <- as.integer(args[["min-samples-per-window"]])
 pct_min      <- as.numeric(args[["per-cluster-min-pct"]])
+# Optional absolute floor on top of the percentage. Default 0 = no change.
+min_per_clu  <- if (is.null(args[["per-cluster-min-samples"]])) 0L else
+                  as.integer(args[["per-cluster-min-samples"]])
 out_dir      <- args[["out-dir"]]
 gff_path     <- args[["gff"]]
 fai_path     <- args[["fai"]]
@@ -165,11 +177,12 @@ per_cluster_keep <- calls %>%
   distinct(Cluster, WINDOW, SAMPLE) %>%
   count(Cluster, WINDOW, name = "n_samples") %>%
   left_join(cluster_sizes, by = "Cluster") %>%
-  mutate(threshold = ceiling(cluster_n * pct_min)) %>%
+  mutate(threshold = pmax(ceiling(cluster_n * pct_min), min_per_clu)) %>%
   filter(n_samples >= threshold) %>%
   dplyr::select(Cluster, WINDOW)
 calls <- calls %>% semi_join(per_cluster_keep, by = c("Cluster", "WINDOW")) %>%
-  log_step(sprintf("2. per-cluster >= %g%%", pct_min * 100))
+  log_step(sprintf("2. per-cluster >= %g%%%s", pct_min * 100,
+                   if (min_per_clu > 0) sprintf(" (floor %d)", min_per_clu) else ""))
 
 # -- filter 3: hypervariable gene families from the GFF --------------------
 # Reconcile the GFF's contig names with the pipeline's integer CHROM codes.

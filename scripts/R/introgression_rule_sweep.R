@@ -112,13 +112,16 @@ own_lvl   <- ifelse(dist_tbl$Cluster == kx, lvl[[kx]], lvl[[ky]])
 other_lvl <- ifelse(dist_tbl$Cluster == kx, lvl[[ky]], lvl[[kx]])
 keys      <- paste0(dist_tbl$SAMPLE, "@", dist_tbl$WINDOW)
 
-score <- function(hit, rule, thr_other, thr_own) {
+score <- function(hit, rule, thr_other, thr_own,
+                  margin = NA_real_, adaptive = NA) {
   called <- unique(keys[hit])
   tp <- sum(truth_keys %in% called)
   tibble(
     detection_rule      = rule,
     contour_level_other = thr_other,
     contour_level_own   = thr_own,
+    distance_margin     = margin,
+    distance_adaptive   = adaptive,
     n_truth             = length(truth_keys),
     n_calls             = length(called),
     n_true_positive     = tp,
@@ -135,6 +138,8 @@ score <- function(hit, rule, thr_other, thr_own) {
 # -- the grid --------------------------------------------------------------
 LEVELS_OTHER <- c(1e-4, 2e-4, 5e-4, 1e-3, 2e-3)
 LEVELS_OWN   <- c(2e-4, 5e-4, 1e-3)
+DISTANCE_MARGINS   <- c(5, 10, 15, 20, 30)   # percentage points
+DISTANCE_QUANTILES <- c(0.8, 0.9, 0.95)
 
 rows <- list()
 for (lo in LEVELS_OTHER) {
@@ -146,8 +151,42 @@ for (lo in LEVELS_OTHER) {
 # `relative` has no thresholds — one row.
 rows[[length(rows) + 1]] <- score(other_lvl > own_lvl, "relative", NA, NA)
 
+# `distance` reads the raw distances instead of the density levels, so it gets
+# its own axis: a margin grid plus the adaptive (self-calibrating) mode. The
+# distances are already oriented per sample by its cluster assignment, exactly
+# as pair_calls() does it in the pipeline.
+d_own   <- ifelse(dist_tbl$Cluster == kx, dist_tbl$DIST_X, dist_tbl$DIST_Y)
+d_other <- ifelse(dist_tbl$Cluster == kx, dist_tbl$DIST_Y, dist_tbl$DIST_X)
+for (m in DISTANCE_MARGINS) {
+  rows[[length(rows) + 1]] <- score(d_own - d_other >= m, "distance", NA, NA,
+                                    margin = m, adaptive = FALSE)
+}
+# Adaptive: the two clusters' self-distance distributions set the bar, so the
+# same code answers differently on a tight cluster than on a diffuse one —
+# without ever fitting a surface.
+for (q in DISTANCE_QUANTILES) {
+  hit <- rep(FALSE, nrow(dist_tbl))
+  for (own in c(kx, ky)) {
+    other <- setdiff(c(kx, ky), own)
+    idx <- which(dist_tbl$Cluster == own)
+    if (length(idx) == 0) next
+    cal <- distance_calibration(dist_tbl, own, other, kx, ky)
+    hit[idx] <- is_introgressed(
+      tibble(x = dist_tbl$DIST_X[idx], y = dist_tbl$DIST_Y[idx],
+             d_own = d_own[idx], d_other = d_other[idx]),
+      NULL, NULL,
+      list(detection_rule = "distance", distance_adaptive = TRUE,
+           distance_adaptive_quantile = q, distance_calibration = cal)
+    )$introgressed
+  }
+  rows[[length(rows) + 1]] <- score(hit, "distance", NA, NA,
+                                    margin = NA_real_, adaptive = TRUE)
+  rows[[length(rows)]]$distance_adaptive_quantile <- q
+}
+
 sweep <- bind_rows(rows) %>%
-  arrange(detection_rule, contour_level_other, contour_level_own)
+  arrange(detection_rule, contour_level_other, contour_level_own,
+          distance_margin, distance_adaptive)
 write_tsv(sweep, out_tsv)
 
 cat("\n=== detection-rule / threshold sweep ===\n")
@@ -156,6 +195,7 @@ cat(sprintf("pair=%s  fixture truth=%d (sample, window) pairs  sample-windows=%d
 sweep %>%
   mutate(across(c(detection_rate, precision), ~ round(.x, 3))) %>%
   dplyr::select(detection_rule, contour_level_other, contour_level_own,
+                distance_margin, distance_adaptive,
                 n_true_positive, n_false_negative, n_false_positive,
                 detection_rate, precision, n_fp_windows) %>%
   print(n = 100)

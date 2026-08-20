@@ -8,6 +8,13 @@
 # own. V1 did this with three cluster names welded into the code; the pairwise
 # form keeps the identical density method and scales to any K.
 #
+# DETECTION RULE — three are available (introgression.detection_rule):
+# `absolute` (V1, shipped default) and `relative` both read a fitted 2D density
+# surface; `distance` decides from the raw per-window distances alone and fits
+# nothing, so its calls are reproducible across cohort shifts. The density
+# rules' window-level calls are known to be cohort-sensitive — see the "Method
+# status" block in docs/introgression_analysis_spec.md before interpreting them.
+#
 # VALIDATION STATUS — this stage was never validated against an HPC/reference
 # output (V1's own script header records that reference outputs were
 # unavailable). Correctness rests on the synthetic positive controls in
@@ -157,13 +164,18 @@ rule introgression_pair:
           parallelism.
     TUNABLES: introgression.window_size_bp, introgression.min_snps_per_window,
               introgression.detection_rule, introgression.contour_level_other,
-              introgression.contour_level_own, introgression.pairs,
+              introgression.contour_level_own, introgression.distance_margin,
+              introgression.distance_adaptive,
+              introgression.distance_adaptive_quantile, introgression.pairs,
               introgression.min_cluster_n
     OUTPUT: {outputs}/introgression/pairs/{{pair}}.tsv
-    TRY:    switch introgression.detection_rule to "relative" and diff the call
-            count for one pair — `relative` asks "is this window deeper in the
-            other cluster's cloud than in its own?" and has no absolute cutoff
-            to drift when one cluster is more diffuse than the other.
+    TRY:    switch introgression.detection_rule to "distance" and diff the call
+            count for one pair. `distance` never fits a density surface — it
+            asks only whether the window matches the OTHER cluster's consensus
+            at least `distance_margin` percentage points better than its own —
+            so unlike `absolute`/`relative` its calls cannot move when cohort
+            composition changes. Set `distance_adaptive: true` to derive that
+            margin from the clusters' own spread instead of a fixed number.
     """
     input:
         gt_table = rules.combined_genotype_table.output.tsv,
@@ -178,6 +190,9 @@ rule introgression_pair:
         rule_name   = INTRO.get("detection_rule", "absolute"),
         lvl_other   = INTRO.get("contour_level_other", 5.0e-4),
         lvl_own     = INTRO.get("contour_level_own", 5.0e-4),
+        dist_margin = INTRO.get("distance_margin", 15),
+        dist_adapt  = str(bool(INTRO.get("distance_adaptive", False))).lower(),
+        dist_q      = INTRO.get("distance_adaptive_quantile", 0.9),
         script      = str(_AGNOSTIC / "scripts" / "R" / "introgression_pair.R"),
     threads: 1
     message:
@@ -194,6 +209,9 @@ rule introgression_pair:
             --detection-rule      {params.rule_name} \
             --contour-level-other {params.lvl_other} \
             --contour-level-own   {params.lvl_own} \
+            --distance-margin     {params.dist_margin} \
+            --distance-adaptive   {params.dist_adapt} \
+            --distance-adaptive-quantile {params.dist_q} \
             --out                 {output.calls} \
             > {log} 2>&1
         """
@@ -221,6 +239,7 @@ rule introgression_aggregate:
           SICA|KIR grep, and skips itself with a logged note when no GFF is set.
     TUNABLES: introgression.min_samples_per_window,
               introgression.per_cluster_min_pct,
+              introgression.per_cluster_min_samples,
               introgression.gene_family_filters, introgression.gff,
               introgression.window_size_bp
     OUTPUT: {outputs}/introgression/introgressed_windows_filtered.tsv,
@@ -260,6 +279,7 @@ rule introgression_aggregate:
         window_size  = INTRO.get("window_size_bp", 10000),
         min_samp_win = INTRO.get("min_samples_per_window", 2),
         pct_min      = INTRO.get("per_cluster_min_pct", 0.05),
+        pct_min_n    = INTRO.get("per_cluster_min_samples", 0),
         gff          = INTRO_GFF or "NULL",
         gene_kw      = ",".join(INTRO.get("gene_family_filters") or []) or "NULL",
         script       = str(_AGNOSTIC / "scripts" / "R" / "introgression_aggregate.R"),
@@ -276,6 +296,7 @@ rule introgression_aggregate:
             --window-size            {params.window_size} \
             --min-samples-per-window {params.min_samp_win} \
             --per-cluster-min-pct    {params.pct_min} \
+            --per-cluster-min-samples {params.pct_min_n} \
             --gff                    "{params.gff}" \
             --gene-family-filters    "{params.gene_kw}" \
             --out-dir                {params.out_dir} \

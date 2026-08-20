@@ -186,6 +186,12 @@ properties:
       min_cluster_n:          { type: integer, minimum: 2 }
       min_samples_per_window: { type: integer, minimum: 0 }
       per_cluster_min_pct:    { type: number,  minimum: 0, maximum: 1 }
+      per_cluster_min_samples:
+        type: integer
+        minimum: 0
+        description: >
+          Absolute floor on the per-cluster window filter, applied as
+          max(ceiling(cluster_n * per_cluster_min_pct), this). 0 = percentage only.
       pairs:
         oneOf:
           - { type: string, enum: [all] }
@@ -199,10 +205,31 @@ properties:
       pair_warn_threshold: { type: integer, minimum: 1 }
       detection_rule:
         type: string
-        enum: [absolute, relative]
-        description: absolute = V1's fixed density cutoffs; relative = deeper in the other cloud than its own.
+        enum: [absolute, relative, distance]
+        description: >
+          absolute = V1's fixed density cutoffs; relative = deeper in the other
+          cloud than in its own; distance = deterministic, thresholds the raw
+          per-window distances and fits no density surface.
       contour_level_other: { type: number, minimum: 0 }
       contour_level_own:   { type: number, minimum: 0 }
+      distance_margin:
+        type: number
+        minimum: 0
+        description: >
+          detection_rule "distance", fixed mode. Percentage points by which a
+          window must match the OTHER cluster's consensus better than its own
+          (d_own - d_other >= this).
+      distance_adaptive:
+        type: boolean
+        description: >
+          detection_rule "distance". true = derive the margin per pair from the
+          two clusters' own within-cluster distance spread instead of
+          distance_margin. Still deterministic — quantiles, not a fitted surface.
+      distance_adaptive_quantile:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: Quantile of each cluster's self-distance distribution used by distance_adaptive.
       focal_group:
         type: [string, "null"]
         description: Value of the `geography` role for the unique-windows headline. null = skip the headline.

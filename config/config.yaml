@@ -73,11 +73,18 @@ introgression:
   min_cluster_n: 5              # clusters below this take no part in any pair
   min_samples_per_window: 2     # strict >: drop windows carried by ≤ 2 samples (V1's n > 2)
   per_cluster_min_pct: 0.05     # window must be called in ≥ 5% of the cluster
+  per_cluster_min_samples: 0    # optional absolute floor on top of the % (0 = none)
   pairs: "all"                  # "all" (C(K,2)) | explicit [[Kx, Ky], …] list
   pair_warn_threshold: 15       # runtime warning above this many pairs
-  detection_rule: "absolute"    # "absolute" (V1 default) | "relative" (see spec §2.3)
-  contour_level_other: 5.0e-4   # density level for "inside the other cluster"
-  contour_level_own:   5.0e-4   # density level for "inside its own cluster"
+  detection_rule: "absolute"    # "absolute" (V1 default) | "relative" | "distance" (spec §2.3)
+  contour_level_other: 5.0e-4   # density level for "inside the other cluster"  [absolute]
+  contour_level_own:   5.0e-4   # density level for "inside its own cluster"    [absolute]
+  # `distance` is the deterministic rule: it thresholds the raw per-window
+  # distances and never fits a density surface, so its calls do not move when
+  # cohort composition changes. See docs/introgression_analysis_spec.md.
+  distance_margin: 15           # percentage points; d_own - d_other >= this   [distance, fixed]
+  distance_adaptive: false      # true = derive the margin from within-cluster spread [distance]
+  distance_adaptive_quantile: 0.9  # the quantile the adaptive mode calibrates on
   focal_group: null             # geography value for the unique-windows headline; null = skip
   gene_family_filters: []       # attribute keywords masked from the GFF (e.g. hypervariable families)
   gff: null                     # optional annotation; gene-family filter skipped if unset
