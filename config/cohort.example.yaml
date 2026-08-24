@@ -76,8 +76,21 @@ introgression:
   min_snps_per_window: 5
   min_cluster_n: 5
   min_samples_per_window: 2
-  per_cluster_min_pct: 0.05
-  per_cluster_min_samples: 0          # V1-Indo used the percentage alone
+  # Absolute floor, derived by permutation on THIS cohort — see spec §9.5 and
+  # outputs/introgression/floor_derivation.tsv. N = 32 is the smallest floor at
+  # which fewer than one window per cluster is expected by chance in the worst
+  # case (Mf, n = 410; FDR 0.008). Per-cluster it would be Mf 32 / Mn 16 /
+  # Peninsular 10 — the floor is global by design, so the largest cluster sets it.
+  #
+  # ⚠ CONSEQUENCE, READ BEFORE USING: at N = 32 the Peninsular cluster (n = 35)
+  # retains ZERO windows and the Aceh headline is EMPTY. Aceh is 10 samples
+  # inside Peninsular, so an Aceh-unique window can never exceed support 10 —
+  # any floor above 10 makes the headline structurally unreachable, and the one
+  # surviving window (chr4 ~0.95 Mb, 5 Aceh samples) dies at N = 6. The
+  # false-discovery argument and the headline are incompatible on this cohort;
+  # that is a finding, not a setting to tune around. Spec §9.5 has the options.
+  per_cluster_min_pct: 0
+  per_cluster_min_samples: 32
   # K = 3 here (Mf / Mn / Peninsular) → 3 pairs, comfortably under the warning
   # threshold. Swap in an explicit list to focus, e.g. [["Peninsular", "Mf"]].
   pairs: "all"

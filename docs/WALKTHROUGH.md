@@ -4,7 +4,7 @@
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
 - Config: `config/cohort.example.yaml`
-- Commit: `3f5b6ff-dirty`
+- Commit: `e43eca4-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -1054,8 +1054,8 @@ SICA|KIR grep, and skips itself with a logged note when no GFF is set.
 **TUNABLES.**
 
 - `introgression.min_samples_per_window` = `2`
-- `introgression.per_cluster_min_pct` = `0.05`
-- `introgression.per_cluster_min_samples` = `0`
+- `introgression.per_cluster_min_pct` = `0`
+- `introgression.per_cluster_min_samples` = `32`
 - `introgression.gene_family_filters` = `['SICA', 'KIR']`
 - `introgression.gff` = `'data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff'`
 - `introgression.window_size_bp` = `10000`

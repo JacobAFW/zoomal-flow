@@ -192,6 +192,11 @@ properties:
         description: >
           Absolute floor on the per-cluster window filter, applied as
           max(ceiling(cluster_n * per_cluster_min_pct), this). 0 = percentage only.
+          This is the SHIPPED mechanism (with per_cluster_min_pct: 0) because a
+          percentage scales its threshold with cluster n and re-introduces the
+          size confound. Derive the value per cohort with
+          scripts/R/introgression_floor_derivation.R — it is not portable
+          between cohorts. See docs/introgression_analysis_spec.md §9.5.
       pairs:
         oneOf:
           - { type: string, enum: [all] }

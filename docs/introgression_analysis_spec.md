@@ -51,9 +51,27 @@ GitHub README.
 > 0.66 / 0.61 for `absolute`) and shows the *largest* residual size dependence under the equal
 > floor (max/min 6.0). Removing the density surface does not buy reproducibility, because the
 > **cluster consensus alleles are themselves cohort-derived** — that dependence survives every
-> rule. The open question this leaves is a filter question, not a rule question: whether
-> `per_cluster_min_pct` should be replaced by `per_cluster_min_samples` as the shipped default
-> for cohorts with very unequal cluster sizes. That is Jacob's call. Full record: §9.4.
+> rule. The open question this leaves is a filter question, not a rule question.
+>
+> **Decision (Jacob, 2026-08-20): the shipped default per-cluster filter becomes the absolute
+> floor** — `per_cluster_min_samples` with `per_cluster_min_pct: 0` — because the headline
+> claims are cross-cluster / Aceh-vs-Peninsular comparisons where the size confound must go.
+> The percentage stays available for within-cluster framing. **The floor `N` is derived, not
+> guessed:** set it by a null-permutation / FDR argument — permute the introgression calls
+> within cluster, recompute per-window sample-support under the null, take the smallest `N`
+> that essentially no null window reaches, and report the null distribution plus a stability
+> sweep around it. This also closes the diagnosis's flagged "no FDR anywhere" gap.
+>
+> **Derivation run 2026-08-24 (§9.5): `N = 32` on the Indo cohort, `N = 44` on the Malay
+> benchmark — and the result is that the FDR argument and the focal-group headline cannot both
+> hold on this cohort.** The FDR-safe floor scales with cluster size (Indo: Mf n=410 → 32,
+> Mn n=108 → 16, Peninsular n=35 → 10), so a single global floor is set by the largest cluster
+> and excludes the smallest. At `N = 32` the Peninsular cluster retains **zero** windows and
+> the Aceh headline is **empty**; because Aceh is 10 samples inside Peninsular, *any* floor
+> above 10 makes an Aceh-unique window structurally unreachable, and the single surviving
+> window (chr4 ≈0.95 Mb, 5 Aceh samples) dies at `N = 6`. The shipped configs carry the derived
+> values with that consequence spelled out; **the resolution is a science call, not a config
+> tweak** — see §9.5. Full Stage-5b record: §9.4.
 >
 > **Three V1 defects found + fixed during the port** (keep): (1) the GFF↔reference contig map
 > covered only 3 of 14 chromosomes (exact-length matching broke on the A1.H.1 Icor
@@ -492,6 +510,117 @@ The tiny cohort still cannot discriminate between rules. `distance` recovers 6/6
 sample-windows at every margin from 5 to 30 pp and at every adaptive quantile, with the same
 2–4 singleton false positives the density rules produce, all of which the low-n filter removes.
 The sweep (`detection_rule_sweep.tsv`) now carries `distance` rows for the record.
+
+### 9.5 Stage 5c — deriving the per-cluster floor by permutation (built 2026-08-24)
+
+Stage 5b settled that the per-cluster filter should be an absolute floor rather than a
+percentage. This derives the floor instead of guessing it, and closes the "no FDR anywhere"
+gap the Malay diagnosis flagged. Two scripts, neither of which re-runs detection — both read
+the cached per-pair calls:
+
+- `scripts/R/introgression_floor_derivation.R` → `outputs/introgression/floor_derivation.tsv`
+- `scripts/R/introgression_floor_sweep.R` → `outputs/introgression/floor_stability_sweep.tsv`
+
+#### The null
+
+Filter 2 asks whether a window has enough same-cluster support to be a shared event rather
+than a coincidence. The null therefore has to be "what does coincidence look like": per
+cluster, each sample keeps its *number* of introgressed windows and its *eligible* window set,
+but redraws **which** windows it hits, uniformly without replacement. That destroys genomic
+co-location between samples while preserving per-sample call rate, per-sample testability and
+cluster size — the three things that would otherwise confound a comparison between clusters.
+1,000 replicates; each replicate passes through the dataset-level filter (filter 1) exactly as
+the real data does before support is measured.
+
+**The eligible set is computed, not assumed, and it is the whole argument.** A sample can only
+be called where the pipeline computed a distance for it, i.e. where it has more than
+`min_snps_per_window` non-missing calls. The derivation recomputes that eligibility table from
+the genotype table (window binning + a per-(sample, window) SNP count — no consensus, no
+distances, no density, ~6 s on the Indo cohort). Assume "any 10 kb window in the genome"
+instead and the universe roughly triples, the null thins out, and `N` comes out far too small.
+On the Indo cohort only **700** of ~2,300 genomic windows carry more than 5 SNPs. One stated
+caveat, and it biases `N` downward: the pipeline also drops sample-windows whose two distances
+tie, which needs the consensus, so the eligible set here is marginally too large.
+
+#### Result — Indo cohort (counts only)
+
+Universe 700 windows; 19,372 distinct (sample, window) calls; 553 samples.
+
+| cluster | n | null mean support | null p95 | null p99 | null max |
+|---|---|---|---|---|---|
+| Mf | 410 | 17.95 | 25 | 28 | 42 |
+| Mn | 108 | 6.73 | 11 | 13 | 21 |
+| Peninsular | 35 | 3.14 | 6 | 7 | 13 |
+
+Target: expected null windows < 1 per cluster **and** FDR < 0.05. Smallest floor meeting it:
+
+| cluster | n | FDR-safe N | expected null windows | observed windows | FDR |
+|---|---|---|---|---|---|
+| Mf | 410 | **32** | 0.994 | 120 | 0.0083 |
+| Mn | 108 | 16 | 0.724 | 109 | 0.0066 |
+| Peninsular | 35 | 10 | 0.368 | 86 | 0.0043 |
+
+**Chosen global `N = 32`**, binding cluster Mf. The Malay benchmark reproduces the pattern
+independently: universe 1,363 windows, `N = 44` (Mf 44 / Mn 20 / Peninsular 10).
+
+#### Result — stability sweep (Indo, counts only)
+
+Windows surviving the full filter chain, by floor:
+
+| N | Mf | Mn | Peninsular | all | Aceh headline |
+|---|---|---|---|---|---|
+| 1 | 9 | 6 | 22 | 37 | 1 |
+| 3 | 35 | 26 | 40 | 101 | 1 |
+| 5 | 55 | 51 | 47 | 153 | 1 |
+| 6 | 70 | 63 | 43 | 176 | **0** |
+| 10 | 99 | 70 | 23 | 192 | 0 |
+| 16 | 127 | 59 | 7 | 193 | 0 |
+| 20 | 118 | 49 | 1 | 168 | 0 |
+| 25 | 115 | 39 | 1 | 155 | 0 |
+| 30 | 109 | 32 | 0 | 141 | 0 |
+| **32** | **106** | **28** | **0** | **134** | **0** |
+| 35 | 107 | 23 | 0 | 130 | 0 |
+
+Two things to read here. The total is **not monotone** in `N` — it rises to 210 around N = 12
+before falling — because the hypervariable filter (filter 4) runs *after* the floor: raising the
+floor strips a cluster's weak support for a window, and a window that was called in two clusters
+becomes called in one and survives filter 4. "Raise the floor to be safer" is therefore not a
+one-way lever. And the Mf/Mn columns are locally flat around N = 32 (106 → 105 → 106 → 107), so
+the derived floor is not perched on a cliff *for the large clusters*. Peninsular has been at
+zero since N = 30.
+
+#### The finding: the FDR floor and the headline are incompatible here
+
+Aceh is **10 samples inside the 35-sample Peninsular cluster**. An Aceh-unique window can
+therefore never have support above 10, so **no floor above 10 can produce an Aceh headline at
+all**, and the single window that does survive under a low floor — chr4 ≈0.95 Mb, carried by 5
+of the 10 Aceh samples — dies at `N = 6`. The FDR-safe floor is 32.
+
+This is not a tuning problem. It says the detection step calls too liberally for a
+support-based filter to rescue at these cluster sizes: 4–9% of every cluster's sample-windows
+are called introgressed, so with 410 Mf samples drawing from 700 windows, chance alone puts
+~18 samples on every window. A floor strong enough to beat that is stronger than any
+10-sample subgroup can supply.
+
+Options, in the order they should be considered — **all are science calls, none is taken here:**
+
+1. **Accept the floor and retire the focal-group headline** as a window-level claim. The
+   cross-cluster result (134 windows, Mf/Mn) stands; "windows unique to Aceh" does not.
+2. **Test the focal group directly** rather than filtering it through its cluster's floor —
+   an Aceh-vs-rest-of-Peninsular contrast with its own permutation null over 10 samples,
+   which is a different and much better-posed test than "survive a cluster-wide floor".
+3. **Reduce the call rate first** (a stricter detection threshold), then re-derive. The null
+   support scales with the call rate, so halving it roughly halves the required floor.
+4. **Per-cluster floors** (Mf 32 / Mn 16 / Peninsular 10), each FDR-safe in its own cluster.
+   Explicitly rejected in the Stage 5c brief as reintroducing size-dependence — recorded here
+   because it is the only option that keeps a Peninsular result while controlling FDR.
+
+The shipped default is the derived global floor, with the consequence documented in
+`config/cohort.example.yaml`. `config/config.yaml` does **not** inherit the number: an
+FDR-safe floor is cohort-specific (Indo 32, Malay 44) and a 410-sample cluster's threshold
+would return nothing on a small cohort, so the generic config ships the mechanism plus the
+minimum that keeps the per-cluster test no weaker than the pooled one
+(`min_samples_per_window + 1` = 3) and points at the derivation script.
 
 ## 10. Out of scope / open items
 

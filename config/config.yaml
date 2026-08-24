@@ -72,8 +72,21 @@ introgression:
   min_snps_per_window: 5        # strict >: a window needs at least 6 called SNPs
   min_cluster_n: 5              # clusters below this take no part in any pair
   min_samples_per_window: 2     # strict >: drop windows carried by ≤ 2 samples (V1's n > 2)
-  per_cluster_min_pct: 0.05     # window must be called in ≥ 5% of the cluster
-  per_cluster_min_samples: 0    # optional absolute floor on top of the % (0 = none)
+  # Per-cluster support filter. Since 2026-08-24 the shipped mechanism is an
+  # ABSOLUTE floor, not a percentage: a percentage scales its threshold with
+  # cluster n and so re-introduces the size confound Stage 5b traced (spec §9.4).
+  # Threshold = max(ceiling(cluster_n * per_cluster_min_pct), per_cluster_min_samples).
+  per_cluster_min_pct: 0        # 0 = floor only. Set > 0 for within-cluster framing.
+  # DERIVE THIS FOR YOUR COHORT — do not inherit the number below. Run
+  #   Rscript scripts/R/introgression_floor_derivation.R ... --out <...>
+  # which permutes each sample's calls over its own eligible windows and reports
+  # the smallest floor at which chance co-location stops producing windows.
+  # The FDR-safe floor scales steeply with cluster size (Indo: Mf n=410 -> 32,
+  # Mn n=108 -> 16, Peninsular n=35 -> 10), so there is no portable number.
+  # The value here is the generic MINIMUM, not a derived one: it simply matches
+  # the dataset-level filter (min_samples_per_window + 1), so the per-cluster
+  # test is never weaker than the pooled one. See spec §9.5 before trusting it.
+  per_cluster_min_samples: 3
   pairs: "all"                  # "all" (C(K,2)) | explicit [[Kx, Ky], …] list
   pair_warn_threshold: 15       # runtime warning above this many pairs
   detection_rule: "absolute"    # "absolute" (V1 default) | "relative" | "distance" (spec §2.3)
