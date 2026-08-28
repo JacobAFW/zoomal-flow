@@ -139,6 +139,41 @@ reports/figures/declonalization_comparison.{png,svg}
 The per-sample Fws/MOI table (`outputs/moi/fws_MOI.tsv`), the QC outputs, Stage 4, and the shared
 structure prep are **not** namespaced — they are sample-set-independent by construction.
 
+## The two arms are not like-for-like at the variant level
+
+Worth knowing before you compare anything, because it is easy to assume otherwise: the
+de-clonalized arm is **not** "the same analysis with fewer samples". Stage 3's filter chain is
+re-derived per sample set, and two of its steps are *fractions of the cohort* rather than fixed
+counts — `--geno` (per-variant missingness) and `--maf`. Shrinking the sample set shrinks their
+denominators, so the surviving VARIANT set genuinely differs.
+
+That is deliberate and it is the whole point: allele frequencies are exactly what clonal
+pseudo-replication distorts, so the de-clonalized arm has to re-derive them rather than inherit
+the full-set variant list. But the effect is larger than the sample change would suggest. On the
+Indo cohort:
+
+| step | full | unique |
+|---|---|---|
+| samples after the duplicate/clonal removal | 784 | 766 (−18) |
+| variants after `--geno 0.20` | 75,204 | **60,616 (−19%)** |
+| samples after `--mind 0.10` | 553 | 539 |
+| variants after `--maf 0.01` | 24,641 | **19,448 (−21%)** |
+
+Removing 2.3% of samples costs 19% of variants, and almost all of that happens at the FIRST
+step, `--geno`, not at MAF. The mechanism is a denominator effect: 95% of the 1.44 M raw variants
+already fail `--geno 0.20`, so the survivors are packed hard against the threshold. The dropped
+clonal replicates have high *overall* missingness (that is why they lost the representative
+pick), but at those well-covered surviving variants they are mostly called — so removing them
+raises each variant's missing *fraction* and tips a large number over the line.
+
+Two consequences for reading the comparison:
+
+- A cohort-level count falling in the `unique` arm may reflect the smaller variant set as much as
+  the smaller sample set. Check `n_samples_analysed` **and** the Stage-3 logs before attributing
+  a change to pseudo-replication alone.
+- If that trade is not what you want for your cohort, the lever is `structure.max_variant_missing`
+  / the `--geno 0.20` first pass, not the clonality config. Nothing here is tuned to hide it.
+
 ## How to read the comparison
 
 Every stage's `declonalization_comparison.tsv` has one row per metric with `full`, `unique`,
@@ -164,6 +199,53 @@ introgression window count going *up* under de-clonalization is expected behavio
 
 `reports/figures/declonalization_comparison.png` is the same information as a dumbbell per
 metric: two coincident dots mean clonality did not drive that number.
+
+## What it found on the Indo cohort (2026-08-28, counts only)
+
+15 clonal groups covering 33 samples, none straddling clusters. 18 replicates dropped
+(807 → 789 in the PLINK universe; 553 → 539 clustered).
+
+**Structure.** K stays 3 and the three clusters survive, so the population structure itself is
+not an artifact of clonality. The clonality is very unevenly distributed: Mf loses 1 of 410
+(−0.2%), Mn 8 of 108 (−7.4%), Peninsular 5 of 35 (−14.3%). PC1 variance rises 48.1% → 52.9%.
+
+**Group summaries.** Aceh is the biggest mover: n 24 → 19 (−21%). Polyclonality rates barely
+shift anywhere (≤ 0.4 percentage points), which is expected — dropping a clonal replicate
+removes one sample from both the numerator and the denominator of its own group.
+
+**Introgression, cluster level.** Essentially stable: 134 → 133 windows. Per cluster it
+redistributes — Mf 106 → 113 (up, because the per-cluster support floor is size-scaled and
+Mf barely shrank), Mn 28 → 20 (down 29%, and Mn lost 7.4% of its samples).
+
+**Introgression, focal level — the headline, and it is a negative one.** The Aceh focal
+enrichment result of §9.6 (5 windows) goes to **0 windows**. The cause is that **5 of the 10
+Aceh samples were clonal replicates of each other** (three Peninsular clonal groups are Aceh /
+Sabang samples), so the focal group halves to n = 5.
+
+The two reasons are worth separating, because they are not the same claim:
+
+| window | full (Aceh) | unique (Aceh) | full p_adj | unique p_adj | reading |
+|---|---|---|---|---|---|
+| w12_2635000 | 7/10 vs 0/25 | 4/5 vs 0/25 | 0.0052 | 0.0551 | proportion held — lost to POWER |
+| w14_1225000 | 10/10 vs 6/25 | 5/5 vs 6/25 | 0.0064 | 0.326 | proportion held — lost to POWER |
+| w11_385000 | 10/10 vs 7/25 | 5/5 vs 7/25 | 0.0095 | 0.336 | proportion held — lost to POWER |
+| w9_2025000 | 7/10 vs 1/25 | 3/5 vs 1/25 | 0.0095 | 0.351 | proportion FELL (70% → 60%) — partly clonal |
+| w4_955000 | 5/10 vs 0/25 | 2/5 vs 0/25 | 0.0456 | 0.434 | proportion FELL (50% → 40%) — partly clonal |
+
+So three of the five are *not* shown to be pseudo-replication — the fraction of Aceh carrying
+them is preserved or higher, and they fail only because a hypergeometric test on 5 focal samples
+cannot clear BH across 302 windows no matter how clean the signal. Two of them additionally lose
+proportion, so clonal replicates were part of their support.
+
+The defensible conclusion is the conservative one: **on independent genotypes the Indo cohort has
+only 5 Aceh samples, which is too few to support a window-level focal claim at all.** The chr4
+≈0.95 Mb window in particular was already marginal (p_adj = 0.046) and is now 0.434 with its
+proportion falling — it should not be carried forward.
+
+**Selection.** The published negative result is unchanged: 0 candidate regions in both arms. The
+scanned-marker count rises (12 → 286) because rehh discards markers not genotyped in 100% of
+haplotypes, and a smaller haplotype set clears that bar more often — a denominator effect, not a
+change in signal.
 
 ## Turning it off
 
@@ -195,3 +277,13 @@ to move them into `full/` so they are not recomputed. It is idempotent, never ov
 One re-run is unavoidable even after migrating: `final_filters` gained the exclusion-list input,
 so Stage 3 re-derives once. That is deliberate — it is the regression check that the `full` arm
 still reproduces its previous numbers with an empty drop-list.
+
+**Result of that check on the Indo cohort (2026-08-28).** The re-derived full-set arm is
+byte-identical to the pre-clonality outputs: `admix_clusters.tsv`, `best_k.txt` (K = 3),
+`pca_variance.tsv`, `Pk.eigenvec` and `clonal_clusters.tsv` all compare equal, and ADMIXTURE
+reported the same input dimensions and seed (`Size of G: 553x22785`, `Random seed: 43`). The one
+difference is ADMIXTURE's own **cross-validation error at the fifth decimal** on the two K values
+that happened to be recomputed (K = 3: 0.29616 → 0.29614; K = 7: 0.32534 → 0.32537). That is
+floating-point non-determinism in ADMIXTURE's CV reduction, not an effect of this change — the
+`.Q` point estimates those CV values score are themselves byte-identical, and the best-K pick is
+unaffected (K = 3 wins by 0.006 over the runner-up).

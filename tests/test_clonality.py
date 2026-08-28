@@ -204,10 +204,17 @@ def test_inflated_group_count_shifts(clonality):
     The clonal block is all one geography, so that group's sample count MUST
     fall in the de-clonalized arm — this is the pseudo-replication the whole
     increment exists to expose.
+
+    Metrics are matched on `scope`, not on a label prefix: the group summaries
+    are keyed by their FULL composite key (e.g. "CountryB/RegionB1"), because
+    a role value alone is not unique — on the Indo cohort "Sabah" appears under
+    two different countries, and joining on the role name alone corrupts the
+    comparison.
     """
-    rows = clonality["cmp_moi"]
-    n_rows = [r for r in rows if r["metric"].startswith("n[geography=")]
-    assert n_rows, f"no per-geography n metrics: {[r['metric'] for r in rows]}"
+    rows = [r for r in clonality["cmp_moi"]
+            if r["scope"] == "geography" and r["metric"].startswith("n[")]
+    assert rows, f"no per-geography n metrics: {[r['metric'] for r in clonality['cmp_moi']]}"
+    n_rows = rows
     moved = [r for r in n_rows if r["delta"] not in ("", "NA") and float(r["delta"]) < 0]
     assert moved, ("no geography group shrank under de-clonalization, but the "
                    f"fixture's clonal block is all one geography: {n_rows}")
@@ -219,7 +226,8 @@ def test_unaffected_group_does_not_shift(clonality):
     the specificity half: de-clonalization must not perturb what it should not
     touch.
     """
-    rows = [r for r in clonality["cmp_moi"] if r["metric"].startswith("n[geography=")]
+    rows = [r for r in clonality["cmp_moi"]
+            if r["scope"] == "geography" and r["metric"].startswith("n[")]
     unchanged = [r for r in rows if r["delta"] not in ("", "NA") and float(r["delta"]) == 0]
     assert unchanged, ("every geography moved — de-clonalization should only "
                        f"touch groups containing clonal replicates: {rows}")

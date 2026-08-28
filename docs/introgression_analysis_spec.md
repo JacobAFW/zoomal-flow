@@ -756,6 +756,24 @@ against hand-computable cases in `tests/R/test_introgression_units.R`, including
 properties the design rests on: a cluster-wide window scores p = 1 (no enrichment), and a single
 background carrier does not destroy a signal the "unique" rule would have discarded.
 
+#### ⚠ Update 2026-08-28: the Aceh result does not survive de-clonalization
+
+The clonality increment (`docs/clonality.md`) showed that **5 of these 10 Aceh samples are clonal
+replicates of each other** — three of the cohort's Peninsular clonal groups are Aceh / Sabang
+samples. Re-running this exact test on one representative per clonal group (n = 5 Aceh vs 25
+background) returns **0 enriched windows**; the best is w12_2635000 at p_adj = 0.055.
+
+Three of the five windows keep their *proportion* of Aceh carriers (w12 7/10 → 4/5, w14 and w11
+10/10 → 5/5) and fail only on power: a hypergeometric test with 5 focal samples cannot clear BH
+across 302 windows however clean the signal is. Two lose proportion as well (w9 70% → 60%,
+w4_955000 50% → 40%), so clonal replication was part of their support.
+
+The conservative reading, and the one to use: **the cohort has only 5 independent Aceh genotypes,
+which is too few for a window-level focal claim.** The chr4 ≈0.95 Mb window was already marginal
+here (p_adj = 0.046); at p_adj = 0.434 with a falling proportion it should not be carried forward.
+The full-set numbers in the table above are reproduced exactly and are left as the record of what
+the test does on the full set — they are not a result to cite.
+
 #### The old headline is superseded
 
 `unique_windows_in_<focal>_with_freq_and_coords.tsv` and its per-chromosome companion are still

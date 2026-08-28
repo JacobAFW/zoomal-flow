@@ -187,30 +187,48 @@ if (STAGE == "structure") {
   # Polyclonality rate per group, for whichever role tables exist. This is the
   # metric clonality bites hardest: a clonal block from one province counts
   # that province's polyclonality once per replicate.
+  # The summary tables carry the numeric columns below; EVERY other column is
+  # part of the grouping key and must be joined on. Joining on the role name
+  # alone is wrong and silently corrupts the comparison: fws_by_geography.tsv
+  # is grouped by (country, geography), and on the Indo cohort "Sabah" appears
+  # under two countries (Malaysia n=819 and Macaque n=2), so a geography-only
+  # join fans one arm's row against the other's and reports impossible deltas.
+  SUMMARY_COLS <- c("n", "n_samples", "total", "fws_median", "fws_min",
+                    "fws_max", "n_polyclonal", "pct_polyclonal",
+                    "percent_polyclonal", "prop_polyclonal")
   for (role in c("country", "geography")) {
     f <- read_or_null(file.path(FULL, sprintf("fws_by_%s.tsv", role)))
     u <- read_or_null(file.path(UNIQ, sprintf("fws_by_%s.tsv", role)))
     if (is.null(f) && is.null(u)) next
-    key <- role
-    pct_col <- intersect(c("pct_polyclonal", "percent_polyclonal", "prop_polyclonal"),
-                         union(names(f), names(u)))
-    n_col   <- intersect(c("n", "n_samples", "total"), union(names(f), names(u)))
-    if (length(pct_col) == 0) {
-      say("no polyclonality column found in fws_by_%s.tsv — columns: %s",
-          role, paste(union(names(f), names(u)), collapse = ", "))
+    cols    <- union(names(f), names(u))
+    keys    <- setdiff(cols, SUMMARY_COLS)
+    pct_col <- intersect(c("pct_polyclonal", "percent_polyclonal", "prop_polyclonal"), cols)
+    n_col   <- intersect(c("n", "n_samples", "total"), cols)
+    if (length(keys) == 0 || length(pct_col) == 0) {
+      say("fws_by_%s.tsv: no usable key/polyclonality columns (%s)", role,
+          paste(cols, collapse = ", "))
       next
     }
     pct_col <- pct_col[1]
-    join <- full_join(
-      if (is.null(f)) tibble(!!key := character()) else f %>% dplyr::select(all_of(c(key, pct_col, n_col))),
-      if (is.null(u)) tibble(!!key := character()) else u %>% dplyr::select(all_of(c(key, pct_col, n_col))),
-      by = key, suffix = c("_full", "_unique"))
+    take <- function(d) {
+      if (is.null(d)) return(NULL)
+      d %>% dplyr::select(all_of(c(keys, pct_col, n_col)))
+    }
+    tf <- take(f); tu <- take(u)
+    empty <- function(like) like[0, , drop = FALSE]
+    if (is.null(tf)) tf <- empty(tu)
+    if (is.null(tu)) tu <- empty(tf)
+    join <- full_join(tf, tu, by = keys, suffix = c("_full", "_unique"))
+    # Label with the full composite key so two groups sharing a role value stay
+    # distinguishable in the output.
+    label <- apply(join[, keys, drop = FALSE], 1,
+                   function(r) paste(r[!is.na(r)], collapse = "/"))
     for (i in seq_len(nrow(join))) {
-      add(sprintf("pct_polyclonal[%s=%s]", role, join[[key]][i]),
+      add(sprintf("pct_polyclonal[%s]", label[i]),
           join[[paste0(pct_col, "_full")]][i],
           join[[paste0(pct_col, "_unique")]][i], scope = role)
       if (length(n_col) > 0) {
-        add(sprintf("n[%s=%s]", role, join[[key]][i]),
+        add(sprintf("n[%s]", label[i]),
             join[[paste0(n_col[1], "_full")]][i],
             join[[paste0(n_col[1], "_unique")]][i], scope = role)
       }
