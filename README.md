@@ -102,8 +102,29 @@ a cluster *other* than the one it is assigned to? It works **per cluster pair**
 — for (Kx, Ky) it measures every sample-window's distance to both clusters'
 consensus alleles, draws a 2D kernel-density cloud per cluster in that distance
 space, and flags a window when a sample lands in the other cluster's cloud
-rather than its own. The headline output is the set of windows introgressed
-uniquely in a configurable `focal_group`.
+rather than its own.
+
+Stage 5 answers **two** questions, at two different scales, each with its own
+null. Do not read one as the other:
+
+- **Cluster level** — which windows show gene flow between clusters. Controlled
+  by the per-cluster support floor, derived by permutation with an explicit FDR
+  target (`scripts/R/introgression_floor_derivation.R`, spec §9.5). The floor is
+  cohort-specific: derive it, don't inherit a number.
+- **Focal level** — is a window's introgression *enriched* in a subgroup
+  (`focal_group`, e.g. one district) relative to the rest of its own cluster.
+  This has its own size-preserving label-permutation null, scaled to the
+  subgroup, with its own BH/FDR (`scripts/R/introgression_focal_test.R`, spec
+  §9.6). Result: `focal_<group>_enriched_windows.tsv`.
+
+The two are independent by design. A subgroup can never clear a floor
+calibrated on a cluster many times its size, so filtering the focal question
+through the cluster floor is a mis-posed test, not a threshold to tune.
+
+⚠ The older `unique_windows_in_<focal>_*.tsv` table is **descriptive only** and
+is superseded. "Unique to the focal group" is a raw set difference: no null, no
+p-value, no multiple-testing control, and one background sample carrying the
+window flips it out of the set. Cite the enrichment table instead.
 
 Full method, design decisions and validation status:
 **`docs/introgression_analysis_spec.md`**.

@@ -70,7 +70,13 @@ introgression:
   detection_rule: "absolute"
   contour_level_other: 5.0e-4
   contour_level_own:   5.0e-4
+  # RegionA2 is exactly the six samples carrying the injected event, so the
+  # focal enrichment test has a known right answer: that window and nothing else.
   focal_group: "RegionA2"
+  focal_role: "geography"
+  focal_fdr: 0.05
+  focal_permutations: 1000
+  focal_seed: 20260828
   gene_family_filters: []      # no annotation in the fixture
   gff: null
 

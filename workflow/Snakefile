@@ -183,6 +183,12 @@ if ROLES.get("geography"):
     ]
 if INTRO_FOCAL:
     FINAL_TARGETS += [
+        # The focal RESULT: per-window enrichment against a subgroup-scaled
+        # permutation null with its own BH/FDR (spec §9.6).
+        f"{PATHS['outputs']}/introgression/focal_{INTRO_FOCAL}_enriched_windows.tsv",
+        f"{PATHS['outputs']}/introgression/focal_{INTRO_FOCAL}_window_tests.tsv",
+        # Descriptive only — the "unique windows" set difference carries no
+        # significance test and is superseded by the two files above.
         f"{PATHS['outputs']}/introgression/unique_windows_in_{INTRO_FOCAL}_with_freq_and_coords.tsv",
         f"{PATHS['outputs']}/introgression/unique_windows_per_chrom_{INTRO_FOCAL}_vs_rest.tsv",
         f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.png",

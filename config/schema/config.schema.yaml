@@ -237,7 +237,34 @@ properties:
         description: Quantile of each cluster's self-distance distribution used by distance_adaptive.
       focal_group:
         type: [string, "null"]
-        description: Value of the `geography` role for the unique-windows headline. null = skip the headline.
+        description: >
+          Value of the `focal_role` metadata role identifying a subgroup INSIDE
+          one cluster. Drives the focal enrichment test (its own subgroup-scaled
+          permutation null + BH/FDR) and the descriptive unique-windows table.
+          null = skip both. Independent of per_cluster_min_samples — spec §9.6.
+      focal_role:
+        type: string
+        description: >
+          Canonical metadata role that focal_group is a value of (geography,
+          host, country, group, date, case_control). Default "geography".
+      focal_fdr:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: >
+          BH-adjusted significance at which a window is called focal-enriched.
+          This is the focal test's OWN multiple-testing control, at the
+          subgroup's scale; it is not the cluster-level FDR of spec §9.5.
+      focal_permutations:
+        type: integer
+        minimum: 1
+        description: >
+          Label-permutation replicates for the focal null. The reported p_perm
+          has a resolution floor of 1/(this + 1); the call is made on the exact
+          tail of the same null (p_raw/p_adj), with p_perm kept as a check.
+      focal_seed:
+        type: integer
+        description: Seed for the focal label permutation, so the run reproduces.
       gene_family_filters:
         type: array
         items: { type: string }

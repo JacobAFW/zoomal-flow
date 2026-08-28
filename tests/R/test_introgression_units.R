@@ -10,6 +10,7 @@
 #   - is_introgressed()            ALL THREE detection rules
 #   - distance_calibration()       the adaptive rule's per-pair quantile inputs
 #   - pair_calls()                 both-directions orientation + output schema
+#   - focal_enrichment()           the focal-subgroup enrichment null (spec §9.6)
 #
 # Deliberately dependency-free (no testthat in the vvg-box env): a tiny
 # ok()/expect_equal() harness, non-zero exit on any failure. Run directly or
@@ -30,6 +31,7 @@ SCRIPT_DIR <- dirname(sub("^--file=", "",
 R_DIR <- normalizePath(file.path(SCRIPT_DIR, "..", "..", "scripts", "R"))
 source(file.path(R_DIR, "introgression_core.R"))
 source(file.path(R_DIR, "introgression_detect.R"))
+source(file.path(R_DIR, "introgression_focal_core.R"))
 
 # -- micro test harness ----------------------------------------------------
 .n_pass <- 0L
@@ -365,6 +367,77 @@ ok(inherits(tryCatch(is_introgressed(tibble(x = 1, y = 1), cont_a, cont_b,
                                      list(detection_rule = "nonsense")),
                      error = function(e) e), "error"),
    "unknown detection_rule raises an error")
+
+# --------------------------------------------------------------------------
+section("focal_enrichment — the statistic")
+# A 10-member cluster, 4 of them focal (columns 1:4), and four windows chosen
+# so every count is checkable by hand:
+#   w_focal_only   called in all 4 focal members, nobody else
+#   w_clusterwide  called in all 10 members
+#   w_background   called in 4 non-focal members, no focal member
+#   w_mixed        called in 2 focal + 2 non-focal
+fe_M <- rbind(
+  w_focal_only  = c(1, 1, 1, 1, 0, 0, 0, 0, 0, 0),
+  w_clusterwide = rep(1, 10),
+  w_background  = c(0, 0, 0, 0, 1, 1, 1, 1, 0, 0),
+  w_mixed       = c(1, 1, 0, 0, 1, 1, 0, 0, 0, 0))
+fe <- focal_enrichment(fe_M, focal_cols = 1:4, nperm = 2000, seed = 1)
+
+eq(fe$WINDOW, rownames(fe_M), "row order and window ids are preserved")
+eq(fe$focal_support,      c(4L, 4L, 0L, 2L), "focal support counts are right")
+eq(fe$background_support, c(0L, 6L, 4L, 2L), "background support counts are right")
+eq(fe$n_called_cluster,   c(4L, 10L, 4L, 4L), "cluster support counts are right")
+
+# All 4 focal and nobody else: the only way a random size-4 subgroup matches is
+# to BE that subgroup — 1 / choose(10, 4) = 1/210.
+eq(fe$p_exact[1], 1 / choose(10, 4), "focal-only window: p = 1 / choose(n, k)")
+# Called in every member: a random subgroup always scores 4, so p = 1. This is
+# the property that matters most — a cluster-wide window is NOT focal-enriched.
+eq(fe$p_exact[2], 1, "cluster-wide window is not enriched (p = 1)")
+eq(fe$p_perm[2],  1, "cluster-wide window is not enriched under the permutation")
+# Zero focal support: P(X >= 0) = 1, never a false positive from the low side.
+eq(fe$p_exact[3], 1, "background-only window scores p = 1, not a low-tail hit")
+ok(fe$p_exact[4] > 0.1 && fe$p_exact[4] < 1,
+   "a half-focal window is unremarkable, not significant")
+ok(all(diff(order(fe$p_exact)) != 0) && which.min(fe$p_exact) == 1,
+   "the focal-only window is the most enriched of the four")
+
+# The permutation and the exact tail are the SAME null — the whole reason the
+# script is allowed to adjust on the exact form. Monte-Carlo SE at 2000 reps is
+# under 0.012, so 0.05 is a generous band that still catches a wrong null.
+ok(max(abs(fe$p_perm - fe$p_exact)) < 0.05,
+   "p_perm tracks p_exact: the sampled and analytic nulls agree")
+
+# Reproducibility + the size-preserving property of the null.
+fe_again <- focal_enrichment(fe_M, focal_cols = 1:4, nperm = 2000, seed = 1)
+eq(fe_again$p_perm, fe$p_perm, "same seed reproduces the permutation exactly")
+fe_diff <- focal_enrichment(fe_M, focal_cols = 1:4, nperm = 2000, seed = 2)
+ok(!isTRUE(all.equal(fe_diff$p_perm, fe$p_perm)),
+   "a different seed gives a different draw (the null really is sampled)")
+
+# Enrichment SUBSUMES V1's "unique" but is not destroyed by one background
+# carrier — the specific brittleness that motivated replacing the set
+# difference. Same 4 focal members, plus a single non-focal carrier: "unique"
+# drops this window entirely; enrichment still calls it strongly.
+fe_leak <- focal_enrichment(
+  rbind(w_leaky = c(1, 1, 1, 1, 1, 0, 0, 0, 0, 0)), focal_cols = 1:4,
+  nperm = 2000, seed = 1)
+ok(fe_leak$p_exact[1] < 0.05,
+   "one background carrier does not destroy the signal ('unique' would drop it)")
+
+# A focal group larger than its own evidence: support cannot exceed n_called.
+eq(focal_enrichment(rbind(w = c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+                    focal_cols = 1:4, nperm = 100, seed = 1)$p_exact[1], 1,
+   "a window with no calls at all scores p = 1")
+
+# --------------------------------------------------------------------------
+section("focal_enrichment — errors")
+ok(inherits(tryCatch(focal_enrichment(fe_M, focal_cols = 1:10),
+                     error = function(e) e), "error"),
+   "a focal group covering the whole cluster raises an error")
+ok(inherits(tryCatch(focal_enrichment(fe_M, focal_cols = c(1L, 99L)),
+                     error = function(e) e), "error"),
+   "out-of-range focal columns raise an error")
 
 # --------------------------------------------------------------------------
 cat(sprintf("\n%d passed, %d failed\n", .n_pass, .n_fail))

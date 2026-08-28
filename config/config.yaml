@@ -98,7 +98,18 @@ introgression:
   distance_margin: 15           # percentage points; d_own - d_other >= this   [distance, fixed]
   distance_adaptive: false      # true = derive the margin from within-cluster spread [distance]
   distance_adaptive_quantile: 0.9  # the quantile the adaptive mode calibrates on
-  focal_group: null             # geography value for the unique-windows headline; null = skip
+  # -- focal subgroup ------------------------------------------------------
+  # A subgroup INSIDE one cluster (a district, a host species, a time window),
+  # tested for introgression ENRICHMENT against the rest of that cluster. This
+  # is a separate test at a separate scale from the per-cluster floor above:
+  # it has its own permutation null, sized to the subgroup, and its own BH/FDR
+  # control. Nothing here affects `per_cluster_min_samples`, and vice versa.
+  # See docs/introgression_analysis_spec.md §9.6.
+  focal_group: null             # role value to test; null = skip the focal step
+  focal_role: "geography"       # which canonical metadata role focal_group is a value of
+  focal_fdr: 0.05               # BH-adjusted significance for a window to be called enriched
+  focal_permutations: 1000      # label-permutation replicates for the focal null
+  focal_seed: 20260828          # seed for that permutation, so runs are reproducible
   gene_family_filters: []       # attribute keywords masked from the GFF (e.g. hypervariable families)
   gff: null                     # optional annotation; gene-family filter skipped if unset
 

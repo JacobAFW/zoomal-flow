@@ -42,6 +42,8 @@ FILTERED   = INTRO / "introgressed_windows_filtered.tsv"
 AUDIT      = INTRO / "filter_audit.tsv"
 HEADLINE   = INTRO / "unique_windows_in_RegionA2_with_freq_and_coords.tsv"
 MEMBERSHIP = INTRO / "focal_group_membership.tsv"
+FOCAL_ENR  = INTRO / "focal_RegionA2_enriched_windows.tsv"
+FOCAL_ALL  = INTRO / "focal_RegionA2_window_tests.tsv"
 
 
 def _read_tsv(path: Path) -> list[dict]:
@@ -64,7 +66,8 @@ def stage5():
     if not _toolchain_ready():
         pytest.skip("pipeline toolchain not on PATH (source envs/activate.sh)")
 
-    targets = [str(p.relative_to(AGNOSTIC)) for p in (FILTERED, AUDIT, HEADLINE)]
+    targets = [str(p.relative_to(AGNOSTIC))
+               for p in (FILTERED, AUDIT, HEADLINE, FOCAL_ENR, FOCAL_ALL)]
     proc = subprocess.run(
         ["snakemake", "--configfile", str(CONFIG.relative_to(AGNOSTIC)),
          "--cores", "2", *targets],
@@ -86,6 +89,8 @@ def stage5():
         "audit":            _read_tsv(AUDIT),
         "headline":         _read_tsv(HEADLINE),
         "membership":       _read_tsv(MEMBERSHIP),
+        "focal_enriched":   _read_tsv(FOCAL_ENR),
+        "focal_tests":      _read_tsv(FOCAL_ALL),
     }
 
 
@@ -256,3 +261,88 @@ def test_headline_membership_split(stage5):
     assert sides["focal"] == set(stage5["injected_samples"])
     assert sides["rest"], "no comparison samples — the split degenerated"
     assert not (sides["focal"] & sides["rest"])
+
+# --------------------------------------------------------------------------
+# Focal-group enrichment test (spec §9.6). Its own right/wrong check: the six
+# injected samples ARE the RegionA2 subgroup, so the test must flag the
+# injected window as enriched in that subgroup and flag nothing else. This is
+# deliberately independent of per_cluster_min_samples — the whole point of the
+# increment is that the focal question has its own null at its own scale.
+# --------------------------------------------------------------------------
+
+def test_focal_test_flags_the_injected_window(stage5):
+    """The injected window is focal-enriched, with all six carriers."""
+    window = _expected_window_id(stage5)
+    hits = {r["WINDOW"] for r in stage5["focal_enriched"]}
+    assert window in hits, f"injected window not called enriched; got {sorted(hits)}"
+    row = next(r for r in stage5["focal_enriched"] if r["WINDOW"] == window)
+    assert int(row["focal_support"]) == len(stage5["injected_samples"])
+    assert int(row["background_support"]) == 0
+    assert row["CONTIG"] == stage5["contig"]
+    assert int(row["START"]) == stage5["start"]
+    assert int(row["END"]) == stage5["end"]
+    assert float(row["p_adj"]) < float(row["fdr_target"])
+
+
+def test_focal_test_flags_nothing_else(stage5):
+    """Precision: the injected window is the ONLY enriched window."""
+    window = _expected_window_id(stage5)
+    extra = {r["WINDOW"] for r in stage5["focal_enriched"]} - {window}
+    assert not extra, f"windows enriched that should not be: {sorted(extra)}"
+
+
+def test_focal_test_scopes_to_one_cluster(stage5):
+    """
+    The contrast is the focal group vs the REST OF ITS OWN CLUSTER, derived —
+    not the whole cohort, and not a hardcoded cluster name.
+    """
+    rows = stage5["focal_tests"]
+    assert rows, "focal window-test table is empty"
+    clusters = {r["Cluster"] for r in rows}
+    assert len(clusters) == 1, f"the test straddled clusters: {clusters}"
+    row = rows[0]
+    assert int(row["n_focal"]) == len(stage5["injected_samples"])
+    assert int(row["n_background"]) > 0, "the split degenerated — no comparison set"
+    assert row["focal_group"] == "RegionA2"
+    assert row["focal_role"] == "geography"
+
+
+def test_focal_test_reports_every_tested_window(stage5):
+    """
+    The full table carries every tested window with both p-values, so a
+    non-significant window's p_adj can still be quoted — and the enriched table
+    is exactly its significant subset.
+    """
+    rows = stage5["focal_tests"]
+    for col in ("p_perm", "p_raw", "p_adj"):
+        assert all(0 < float(r[col]) <= 1 for r in rows), f"{col} out of (0, 1]"
+    assert len({r["WINDOW"] for r in rows}) == len(rows), "duplicate windows tested"
+    assert int(rows[0]["n_windows_tested"]) == len(rows)
+
+    fdr = float(rows[0]["fdr_target"])
+    significant = {r["WINDOW"] for r in rows if float(r["p_adj"]) < fdr}
+    assert significant == {r["WINDOW"] for r in stage5["focal_enriched"]}
+
+
+def test_focal_permutation_agrees_with_the_exact_null(stage5):
+    """
+    p_perm (sampled) and p_raw (phyper) are two forms of the SAME null, so they
+    must track each other. If they diverge, the analytic form the FDR is
+    computed on does not describe the permutation the method claims to run.
+    Monte-Carlo SE at 1000 replicates is under 0.016; 0.05 is a loose band that
+    still catches a genuinely wrong null.
+    """
+    worst = max(abs(float(r["p_perm"]) - float(r["p_raw"]))
+                for r in stage5["focal_tests"])
+    assert worst < 0.05, f"sampled and exact nulls disagree by {worst:.3f}"
+
+
+def test_focal_enrichment_supersedes_unique_windows(stage5):
+    """
+    The descriptive "unique windows" table is no longer the result, but on this
+    fixture (background support is exactly 0) the two must still agree — the
+    degenerate case enrichment subsumes. A mismatch here means one of the two
+    is reading a different call set than it claims to.
+    """
+    assert ({r["WINDOW"] for r in stage5["headline"]}
+            == {r["WINDOW"] for r in stage5["focal_enriched"]})

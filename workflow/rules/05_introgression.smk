@@ -44,6 +44,7 @@ INTRO = config.get("introgression", {})
 
 INTRO_DIR   = f"{PATHS['outputs']}/introgression"
 INTRO_FOCAL = INTRO.get("focal_group")
+INTRO_ROLE  = INTRO.get("focal_role") or "geography"
 INTRO_GFF   = INTRO.get("gff")
 
 # The GFF is optional AND static. Declare it as a rule input only when it is
@@ -248,7 +249,9 @@ rule introgression_aggregate:
             {outputs}/introgression/windows_by_cluster.tsv,
             {outputs}/introgression/windows_across_chrom.tsv,
             {outputs}/introgression/average_windows_for_clusters.tsv,
-            {outputs}/introgression/intro_per_sample_summary.tsv
+            {outputs}/introgression/intro_per_sample_summary.tsv,
+            {outputs}/introgression/gene_family_masked_windows.tsv,
+            {outputs}/introgression/hypervariable_masked_windows.tsv
     TRY:    read filter_audit.tsv top-to-bottom — it shows how many calls,
             windows and samples each filter removed. If the hypervariable step
             is eating most of your signal, the clusters are probably sharing
@@ -270,6 +273,10 @@ rule introgression_aggregate:
         by_chrom   = f"{INTRO_DIR}/windows_across_chrom.tsv",
         avg_clust  = f"{INTRO_DIR}/average_windows_for_clusters.tsv",
         per_sample = f"{INTRO_DIR}/intro_per_sample_summary.tsv",
+        # The two ARTIFACT masks, written out so the focal enrichment test can
+        # inherit exactly these removals while skipping the support floors.
+        gene_mask  = f"{INTRO_DIR}/gene_family_masked_windows.tsv",
+        hyper_mask = f"{INTRO_DIR}/hypervariable_masked_windows.tsv",
         by_geo     = ([f"{INTRO_DIR}/introgression_by_geography.tsv"]
                       if ROLES.get("geography") else []),
     log:
@@ -350,24 +357,33 @@ if INTRO_FOCAL:
 
     rule introgression_headline:
         """
-        Windows introgressed uniquely in the focal group (the headline result).
+        DESCRIPTIVE: windows called on only one side of the focal/rest split.
+
+        ⚠ SUPERSEDED AS A RESULT. This table carries NO significance test and
+        must not be cited as one. "Unique to the focal group" is a raw set
+        difference: it has no null, no p-value, no multiple-testing control,
+        and one background sample carrying the window flips it. The result to
+        cite is rule `introgression_focal_test` —
+        focal_<group>_enriched_windows.tsv — which tests the same question
+        properly, against a null sized to the subgroup. Kept because the
+        set difference is still a useful thing to eyeball next to the test,
+        and because it is what V1 reported. Spec §9.6.
 
         WHAT: scripts/R/introgression_headline.R — splits the cluster that the
               focal group's samples belong to into "focal" vs "rest", and finds
               the windows called on exactly one side.
-        WHY:  this answers the question the stage exists for ("what
-              introgression does this group carry that its cluster-mates do
-              not?"). V1 hardcoded `State %in% c("Aceh","Peninsular")`; here
-              `focal_group` is matched against the `geography` role and the
+        WHY:  V1 hardcoded `State %in% c("Aceh","Peninsular")`; here
+              `focal_group` is matched against the `focal_role` role and the
               comparison set is derived from the cluster assignment, so any
               cohort can ask the same question of any group.
-        TUNABLES: introgression.focal_group, metadata.roles.geography
+        TUNABLES: introgression.focal_group, introgression.focal_role
         OUTPUT: {outputs}/introgression/unique_windows_in_<focal>_with_freq_and_coords.tsv,
                 {outputs}/introgression/unique_windows_per_chrom_<focal>_vs_rest.tsv,
                 {outputs}/introgression/focal_group_membership.tsv
-        TRY:    point introgression.focal_group at a different geography value
-                and re-run — the comparison cluster is re-derived, so you get
-                that group's unique windows without editing any code.
+        TRY:    diff this window set against the enriched set from
+                introgression_focal_test. Windows here but not there are the
+                ones "unique" over-claimed; windows there but not here are the
+                ones a single background carrier hid from V1's rule.
         """
         input:
             calls    = rules.introgression_aggregate.output.filtered,
@@ -381,9 +397,10 @@ if INTRO_FOCAL:
         params:
             out_dir = INTRO_DIR,
             focal   = INTRO_FOCAL,
+            role    = INTRO_ROLE,
             script  = str(_AGNOSTIC / "scripts" / "R" / "introgression_headline.R"),
         message:
-            f"[introgression] Headline: windows unique to '{INTRO_FOCAL}'"
+            f"[introgression] Descriptive: windows unique to '{INTRO_FOCAL}' (not a test)"
         shell:
             r"""
             mkdir -p {params.out_dir} $(dirname {log})
@@ -392,11 +409,93 @@ if INTRO_FOCAL:
                 --clusters      {input.clusters} \
                 --metadata      {input.metadata} \
                 --focal-group   "{params.focal}" \
+                --focal-role    "{params.role}" \
                 --out-dir       {params.out_dir} \
                 --out-unique    {output.unique} \
                 --out-per-chrom {output.per_chrom} \
                 > {log} 2>&1
             """
+
+    rule introgression_focal_test:
+        """
+        THE FOCAL RESULT: is a window's introgression enriched in the focal
+        subgroup, relative to the rest of its own cluster?
+
+        WHAT: scripts/R/introgression_focal_test.R over the CACHED per-pair
+              calls (detection is not re-run), scoped to the one cluster the
+              focal group sits in. Per window: how many focal samples are
+              called, against a null that holds the window's called set fixed
+              and randomly reassigns which n_focal of the cluster's members
+              carry the focal label. BH across the cluster's windows; a window
+              is enriched at introgression.focal_fdr.
+        WHY:  Stage 5c showed the cluster-wide FDR floor and a focal-group
+              claim are structurally incompatible — a 10-sample subgroup inside
+              a 35-sample cluster can never reach a floor calibrated on a
+              410-sample cluster (spec §9.5). That is the wrong test, not a
+              threshold to tune. The cluster question and the focal question
+              are two tests at two scales; this one is scaled to the subgroup
+              and carries its own multiple-testing control. It is a GENERAL
+              design — any cohort with a focal subgroup (district, host, time
+              window) needs the same thing. It leaves
+              introgression.per_cluster_min_samples completely untouched.
+        FILTERS: the two ARTIFACT masks from the aggregate step (gene family,
+              hypervariable) are inherited; NO support floor is applied —
+              neither min_samples_per_window nor per_cluster_min_samples. The
+              enrichment test's own FDR is the control.
+        TUNABLES: introgression.focal_group, introgression.focal_role,
+              introgression.focal_fdr, introgression.focal_permutations,
+              introgression.focal_seed
+        OUTPUT: {outputs}/introgression/focal_<group>_enriched_windows.tsv,
+                {outputs}/introgression/focal_<group>_window_tests.tsv
+        TRY:    read the per-sample call-rate diagnostic the log prints FIRST.
+                The label permutation does not preserve per-sample call rate,
+                so a focal group that is simply called more often everywhere
+                will read as enriched everywhere. If focal/background is far
+                from 1, the calls are provisional.
+        """
+        input:
+            calls      = introgression_pair_targets,
+            clusters   = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+            metadata   = rules.validate_metadata.output.tsv,
+            cmap       = f"{PATHS['outputs']}/setup/contig_map.tsv",
+            gene_mask  = rules.introgression_aggregate.output.gene_mask,
+            hyper_mask = rules.introgression_aggregate.output.hyper_mask,
+        output:
+            enriched = f"{INTRO_DIR}/focal_{INTRO_FOCAL}_enriched_windows.tsv",
+            tests    = f"{INTRO_DIR}/focal_{INTRO_FOCAL}_window_tests.tsv",
+        log:
+            f"{PATHS['logs']}/introgression/focal_test_{INTRO_FOCAL}.log",
+        params:
+            focal       = INTRO_FOCAL,
+            role        = INTRO_ROLE,
+            window_size = INTRO.get("window_size_bp", 10000),
+            nperm       = INTRO.get("focal_permutations", 1000),
+            seed        = INTRO.get("focal_seed", 20260828),
+            fdr         = INTRO.get("focal_fdr", 0.05),
+            script      = str(_AGNOSTIC / "scripts" / "R" / "introgression_focal_test.R"),
+        message:
+            f"[introgression] Focal enrichment test: '{INTRO_FOCAL}' vs the rest of its cluster"
+        shell:
+            r"""
+            mkdir -p $(dirname {output.enriched}) $(dirname {log})
+            Rscript {params.script} \
+                --clusters           {input.clusters} \
+                --metadata           {input.metadata} \
+                --contig-map         {input.cmap} \
+                --focal-group        "{params.focal}" \
+                --focal-role         "{params.role}" \
+                --gene-family-mask   {input.gene_mask} \
+                --hypervariable-mask {input.hyper_mask} \
+                --window-size        {params.window_size} \
+                --permutations       {params.nperm} \
+                --seed               {params.seed} \
+                --fdr                {params.fdr} \
+                --out-enriched       {output.enriched} \
+                --out-tests          {output.tests} \
+                {input.calls} \
+                > {log} 2>&1
+            """
+
 
     rule plot_introgression_focal:
         """

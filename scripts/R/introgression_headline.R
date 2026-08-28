@@ -1,16 +1,31 @@
 #!/usr/bin/env Rscript
-# introgression_headline.R — windows introgressed uniquely in a focal group
-# (spec §1, §6; generalises V1's Aceh-vs-Peninsular step)
+# introgression_headline.R — DESCRIPTIVE set difference: windows called on
+# only one side of a focal/rest split (spec §6, §9.6)
 # --------------------------------------------------------------------------
+# ⚠ SUPERSEDED AS A RESULT — read before citing anything from this script.
+#   This is NOT a statistical test. "Unique to the focal group" is a raw set
+#   difference with no null, no p-value and no multiple-testing control, and it
+#   is brittle in the worst way: one background sample carrying the window
+#   flips a window out of the set entirely. It was V1's headline; it is now a
+#   descriptive companion table only.
+#
+#   The result to cite is scripts/R/introgression_focal_test.R —
+#   focal_<group>_enriched_windows.tsv — which asks the same question properly:
+#   is a window's introgression ENRICHED in the focal subgroup relative to the
+#   rest of its cluster, under a size-preserving label-permutation null scaled
+#   to the subgroup, BH-adjusted at `focal_fdr`. Enrichment subsumes "unique"
+#   as the degenerate case where background support is 0, and it survives a
+#   single background carrier. See spec §9.6 for why the two were separated.
+#
 # WHAT: split one cluster's samples into "the focal group" and "the rest of
 #       that cluster", then find the windows called in exactly one of the two
-#       sides. The windows unique to the focal group are the headline product:
-#       introgression that group carries and its cluster-mates do not.
-# WHY:  this is the question the analysis exists to answer ("what is special
-#       about Aceh?"). V1 hardcoded `State %in% c("Aceh", "Peninsular")` and
-#       compared two literal geography values (legacy
-#       introgression_multi_cluster.R:583-632). Here `focal_group` is a config
-#       value matched against the `geography` role, and the comparison set is
+#       sides.
+# WHY:  kept because the set difference is still worth eyeballing beside the
+#       test, and because it is what V1 reported, so the two are comparable.
+#       V1 hardcoded `State %in% c("Aceh", "Peninsular")` and compared two
+#       literal geography values (legacy introgression_multi_cluster.R:583-632).
+#       Here `focal_group` is a config value matched against the role named by
+#       `--focal-role` (default `geography`), and the comparison set is
 #       derived: whichever cluster the focal samples belong to, minus the focal
 #       samples themselves. Any cohort, any group, no name literals.
 #
@@ -25,6 +40,7 @@
 #     --clusters    outputs/structure/admix_clusters.tsv \
 #     --metadata    outputs/metadata/samples.tsv \
 #     --focal-group Aceh \
+#     --focal-role  geography \
 #     --out-dir     outputs/introgression \
 #     --out-unique  outputs/introgression/unique_windows_in_Aceh_with_freq_and_coords.tsv \
 #     --out-per-chrom outputs/introgression/unique_windows_per_chrom_Aceh_vs_rest.tsv
@@ -50,6 +66,7 @@ missing  <- setdiff(required, names(args))
 if (length(missing) > 0) stop("Missing args: ", paste(missing, collapse = ", "))
 
 focal    <- args[["focal-group"]]
+role     <- if (is.null(args[["focal-role"]])) "geography" else args[["focal-role"]]
 out_dir  <- args[["out-dir"]]
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -73,21 +90,21 @@ calls <- read_tsv(args[["calls"]], show_col_types = FALSE,
 if (nrow(calls) == 0) write_empty_and_quit("no filtered calls")
 
 meta <- read_tsv(args[["metadata"]], show_col_types = FALSE)
-if (!("geography" %in% names(meta))) {
-  write_empty_and_quit("geography role absent — cannot resolve focal_group")
+if (!(role %in% names(meta))) {
+  write_empty_and_quit(sprintf("role '%s' absent — cannot resolve focal_group", role))
 }
 clusters_in <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(SAMPLE = Sample, Cluster) %>%
   distinct()
 
 membership <- meta %>%
-  dplyr::select(SAMPLE = sample_id, geography) %>%
+  dplyr::select(SAMPLE = sample_id, role_value = all_of(role)) %>%
   inner_join(clusters_in, by = "SAMPLE") %>%
-  mutate(side = ifelse(geography == focal, "focal", "rest"))
+  mutate(side = ifelse(!is.na(role_value) & role_value == focal, "focal", "rest"))
 
 focal_samples <- membership %>% filter(side == "focal")
 if (nrow(focal_samples) == 0) {
-  write_empty_and_quit(sprintf("no samples with geography == '%s'", focal))
+  write_empty_and_quit(sprintf("no samples with %s == '%s'", role, focal))
 }
 
 # Which cluster do the focal samples belong to?
@@ -150,10 +167,14 @@ headline <- side_calls %>%
 
 write_tsv(headline, args[["out-unique"]])
 
-cat(sprintf(paste0("\n[introgression_headline] HEADLINE: %d window(s) introgressed ",
-                   "uniquely in '%s' vs the rest of cluster '%s' ",
+cat(sprintf(paste0("\n[introgression_headline] DESCRIPTIVE (not a test): %d window(s) ",
+                   "called only in '%s', not in the rest of cluster '%s' ",
                    "(%d focal vs %d rest samples)\n"),
             nrow(headline), focal, focal_cluster, n_focal, n_rest))
+cat(paste0("  This is a set difference, not a result. No null, no p-value, no ",
+           "multiple-testing\n  control, and one background carrier flips a window ",
+           "out of the set. Cite the\n  focal ENRICHMENT test instead: ",
+           "focal_", focal, "_enriched_windows.tsv (spec \u00a79.6).\n"))
 if (nrow(headline) > 0) {
   headline %>% head(10) %>%
     mutate(line = sprintf("  %-12s %s:%d-%d  n=%d", WINDOW, CONTIG, START, END, n_samples)) %>%

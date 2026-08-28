@@ -237,9 +237,21 @@ Graceful degradation throughout: no GFF → skip the gene-family filter (with a 
 ## 6. Outputs
 
 Per-pair: introgressed-window calls for (Kx, Ky). Aggregated: cross-pair filtered windows,
-per-cluster and per-sample summaries, per-province/geography summary. Headline (if
-`focal_group` set): `unique_windows_in_<focal>_with_freq_and_coords.tsv` + per-chromosome
-counts. Plus the shoulder + focal-unique figures (role-driven, as in Stage 3b).
+per-cluster and per-sample summaries, per-province/geography summary, plus the two artifact
+masks as window lists (`gene_family_masked_windows.tsv`, `hypervariable_masked_windows.tsv`)
+so the focal test can inherit them.
+
+When `focal_group` is set, two more, and the distinction between them is the point:
+
+- **the result** — `focal_<focal>_enriched_windows.tsv`, windows whose introgression is
+  enriched in the focal subgroup against a subgroup-scaled permutation null, BH-adjusted at
+  `focal_fdr`; plus `focal_<focal>_window_tests.tsv`, the same statistics for *every* tested
+  window so a non-significant window's `p_adj` can still be quoted (§9.6);
+- **descriptive only, superseded** — `unique_windows_in_<focal>_with_freq_and_coords.tsv` +
+  per-chromosome counts. A set difference with no null and no multiple-testing control; not to
+  be cited as a result.
+
+Plus the shoulder + focal-unique figures (role-driven, as in Stage 3b).
 
 ## 7. Generalisations from V1 (summary)
 
@@ -602,13 +614,17 @@ are called introgressed, so with 410 Mf samples drawing from 700 windows, chance
 ~18 samples on every window. A floor strong enough to beat that is stronger than any
 10-sample subgroup can supply.
 
-Options, in the order they should be considered — **all are science calls, none is taken here:**
+Options, in the order they should be considered. **Options 1 and 2 were both taken** in
+Stage 5d (§9.6): the cluster floor stays exactly as derived here, and the focal group gets its
+own test at its own scale rather than being filtered through that floor. Options 3 and 4 remain
+untaken.
 
 1. **Accept the floor and retire the focal-group headline** as a window-level claim. The
    cross-cluster result (134 windows, Mf/Mn) stands; "windows unique to Aceh" does not.
 2. **Test the focal group directly** rather than filtering it through its cluster's floor —
    an Aceh-vs-rest-of-Peninsular contrast with its own permutation null over 10 samples,
    which is a different and much better-posed test than "survive a cluster-wide floor".
+   **BUILT — see §9.6.**
 3. **Reduce the call rate first** (a stricter detection threshold), then re-derive. The null
    support scales with the call rate, so halving it roughly halves the required floor.
 4. **Per-cluster floors** (Mf 32 / Mn 16 / Peninsular 10), each FDR-safe in its own cluster.
@@ -621,6 +637,135 @@ FDR-safe floor is cohort-specific (Indo 32, Malay 44) and a 410-sample cluster's
 would return nothing on a small cohort, so the generic config ships the mechanism plus the
 minimum that keeps the per-cluster test no weaker than the pooled one
 (`min_samples_per_window + 1` = 3) and points at the derivation script.
+
+### 9.6 Stage 5d — the focal-group enrichment test (built 2026-08-28)
+
+§9.5 ended on a finding, not a setting: a focal-group claim cannot survive a cluster-wide FDR
+floor, because a 10-sample subgroup inside a 35-sample cluster can never reach a floor
+calibrated on a 410-sample cluster. The conclusion Stage 5d draws from that is architectural.
+The cluster-level question and the focal-level question are **two different tests at two
+different scales, and each needs its own null**:
+
+| | question | null | control | output |
+|---|---|---|---|---|
+| **cluster level** | which windows show gene flow between clusters | each sample redraws its calls over its own eligible windows (§9.5) | derived per-cluster support floor, FDR target | `introgressed_windows_filtered.tsv` |
+| **focal level** | is a window's introgression *enriched* in this subgroup vs the rest of its cluster | size-preserving focal/background **label** permutation inside the cluster | BH across the cluster's windows, `focal_fdr` | `focal_<group>_enriched_windows.tsv` |
+
+**Nothing about the cluster floor changed.** `per_cluster_min_samples` is still the
+permutation/FDR-derived number of §9.5, the cross-cluster result is still the 134 windows it
+produced, and the focal test does not feed back into it. The two are independent on purpose —
+this is not a route to relax the floor.
+
+This is a **general** design, not an Aceh rescue. Any agnostic cohort with a focal subgroup —
+a district, a host species, a sampling year — has the same shape of problem: the subgroup is
+smaller than its parent cluster, so a cluster-scaled threshold cannot speak about it. The
+subgroup gets a null sized to the subgroup. `focal_group` names the value, `focal_role` names
+the metadata role it is a value of (default `geography`), and the parent cluster is derived
+from the cluster assignment. No name literals anywhere.
+
+#### The test
+
+`scripts/R/introgression_focal_test.R`, statistic in `scripts/R/introgression_focal_core.R`.
+Reads the **cached per-pair calls** — detection is not re-run.
+
+1. **Scope.** Resolve the focal group's parent cluster from `admix_clusters.tsv`; if the group
+   straddles more than one cluster the run errors, because "the rest of its cluster" is then
+   undefined and a null built on the wrong comparison set gives a wrong p-value rather than a
+   rough one. (The descriptive headline step resolves the same ambiguity by majority vote; the
+   test does not.) Everything below is inside that one cluster.
+2. **Filters: the artifact masks, and no support floor.** The gene-family mask (filter 3) and
+   the hypervariable/multi-cluster mask (filter 4) are inherited from the aggregate step, which
+   now writes both as window lists so the dependency is explicit rather than recomputed. Those
+   two excise things that are not introgression at all, so applying them is not a support
+   judgement. Neither `min_samples_per_window` nor `per_cluster_min_samples` is applied: both
+   are support floors, and this test carries its own multiple-testing control. "Hypervariable"
+   is taken at the cluster scale on purpose — that is the scale at which "this window is
+   variable in more than one cluster" is a meaningful claim.
+3. **Statistic.** Per window, the number of focal samples called introgressed.
+4. **Null.** Hold each window's set of introgressed samples in the cluster fixed, and randomly
+   reassign which `n_focal` of the cluster's members carry the focal label. 1,000 replicates at
+   a stated seed. The question is *given the cluster's own introgression pattern, would a random
+   subgroup of this size show this much support at this window by chance?* — so a window
+   introgressed cluster-wide shows **no** focal enrichment, and one carried mostly by the focal
+   group does. Enrichment **subsumes** V1's "unique" as the degenerate case where background
+   support is 0, and unlike "unique" it survives a single background carrier.
+5. **Call.** BH across the cluster's windows; enriched at `focal_fdr` (default 0.05).
+
+**Two p-values, one null — this matters for reading the table.** Permuting the label with the
+called set held fixed makes each window's marginal null exactly hypergeometric,
+`focal_support ~ Hyper(cluster_n, n_called, n_focal)`. The permutation and `phyper()` therefore
+describe the *same* distribution — the second evaluates what the first samples. Both are
+reported. `p_perm` is the Monte-Carlo estimate, `(b+1)/(B+1)`; its resolution floor is
+`1/(B+1)` ~ 1e-3 at B = 1,000, and after BH across a few hundred windows that floor alone can
+put significance out of reach no matter how strong the signal. So the **exact** tail is what BH
+adjusts and what the call is made on (`p_raw` -> `p_adj`), and `p_perm` is kept as a live check
+that the analytic form is the null the method claims to run. Each run prints
+`max |p_perm - p_raw|` over the windows where the Monte Carlo has resolution; on the Indo run
+that is 0.034, about 2 Monte-Carlo standard errors, i.e. the two agree.
+
+#### Stated limitation — call-rate imbalance, and which way it bites
+
+The label permutation treats every cluster member as equally likely to be called anywhere, so
+it does **not** preserve per-sample call rate: the null assumes the focal group's call rate is
+the cluster average. When it is not, the direction decides whether the result is threatened or
+reinforced, and each run prints the diagnostic and names the direction:
+
+- focal called **more** often than average -> the null under-states the support a random
+  subgroup would show, the test **over-calls**. The dangerous direction; calls are provisional
+  and a rate-stratified null is the fix.
+- focal called **less** often than average -> the null over-states it, the test **under-calls**.
+  Surviving windows cleared a higher bar than their p-value implies, and an empty result may be
+  a power limit rather than an absence.
+
+#### Result — Indo cohort, `focal_group: Aceh` (counts only)
+
+Aceh is 10 clustered samples inside the 35-sample Peninsular cluster. Universe after the two
+artifact masks (384 gene-family windows, 12 hypervariable) and no support floor: **294 windows**
+carrying at least one Peninsular call. Call-rate diagnostic: Aceh mean 47.7 windows/sample vs
+background 62.0, ratio **0.77** — the **conservative** direction, so these five cleared a bar
+slightly higher than their p-values imply.
+
+| window | contig:coords | Aceh | rest of Peninsular | p_raw | p_adj |
+|---|---|---|---|---|---|
+| w12_2635000 | PKNH_12:2,630,000-2,639,999 | 7/10 | 0/25 | 1.8e-05 | 0.0052 |
+| w14_1225000 | PKNH_14:1,220,000-1,229,999 | 10/10 | 6/25 | 4.4e-05 | 0.0064 |
+| w11_385000 | PKNH_11:380,000-389,999 | 10/10 | 7/25 | 1.1e-04 | 0.0095 |
+| w9_2025000 | PKNH_09:2,020,000-2,029,999 | 7/10 | 1/25 | 1.3e-04 | 0.0095 |
+| **w4_955000** | **PKNH_04:950,000-959,999** | **5/10** | **0/25** | **7.8e-04** | **0.046** |
+
+**The chr4 ~0.95 Mb window — the one §9.5 recorded as dying at floor N = 6 — is
+focal-enriched, at p_adj = 0.046.** It is the weakest of the five and sits just inside the 0.05
+line; it should be read as a marginal call, not a robust one. Under the shipped cluster floor
+(N = 32) the descriptive `unique_windows_in_Aceh_*.tsv` table is **empty**, so all five of
+these are windows the old rule could not have reported. Two of them (w14, w11) have substantial
+background support and were never "unique" under any floor — they are enrichment findings a set
+difference cannot express.
+
+Read with §9.5's standing caveat: the *detection* step calls liberally (4-9% of each cluster's
+sample-windows), and this stage has never been validated against a reference output. The focal
+test controls the multiple-testing burden of asking 294 window questions; it does not fix a
+liberal detector, and it inherits whatever the detector called.
+
+#### Synthetic ground truth
+
+`tests/tiny_cohort/` injects a known event in six group-A samples at chr2:45,000, and those six
+are also the fixture's `RegionA2` geography — so they double as a focal subgroup with a known
+right answer. The focal test flags **that window and nothing else** (6/6 focal, 0/19 background,
+p_adj = 1.1e-05), checked independently of the cluster floor. The statistic itself is unit-tested
+against hand-computable cases in `tests/R/test_introgression_units.R`, including the two
+properties the design rests on: a cluster-wide window scores p = 1 (no enrichment), and a single
+background carrier does not destroy a signal the "unique" rule would have discarded.
+
+#### The old headline is superseded
+
+`unique_windows_in_<focal>_with_freq_and_coords.tsv` and its per-chromosome companion are still
+written, and the figure still renders, but they are **descriptive only**. A set difference has
+no null, no p-value and no multiple-testing control, and it is brittle in exactly the wrong way
+— one background sample carrying a window removes it. The script header, the Snakemake rule
+docstring, the run's own stdout and the config comments all now say so explicitly, and the
+significance claim lives only in the enrichment table. This closes the diagnosis's FDR gap at
+the focal level: before Stage 5d there was no multiple-testing control anywhere in the focal
+step.
 
 ## 10. Out of scope / open items
 
@@ -636,3 +781,8 @@ minimum that keeps the per-cluster test no weaker than the pooled one
   are sufficient for now.
 - The density-contour *statistic* itself is preserved — we keep V1's estimation + extraction
   (§2.2); only the decision rule on top of it is configurable.
+- A **rate-stratified focal null** (drawing the permuted subgroup within call-count strata
+  rather than uniformly over cluster members) is deferred. It is the fix for the call-rate
+  imbalance §9.6 documents, and it is only worth building for a cohort whose diagnostic comes
+  out on the anti-conservative side — the Indo run's 0.77 is conservative, so stratifying would
+  only make the existing calls stronger.

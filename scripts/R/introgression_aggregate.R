@@ -58,6 +58,11 @@
 #     --gene-family-filters "SICA,KIR"              # or "" to disable
 #     --out-dir     outputs/introgression \
 #     outputs/introgression/pairs/*.tsv
+#
+# The two ARTIFACT masks (filters 3 and 4) are also written out as window
+# lists — gene_family_masked_windows.tsv and hypervariable_masked_windows.tsv
+# — so introgression_focal_test.R can inherit exactly these removals while
+# skipping the support floors. Written unconditionally, header-only if empty.
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -328,12 +333,18 @@ if (is_null_arg(gff_path)) {
         window_id(CHROM, seq(start_bin, end_bin, by = window_size))
       }) %>%
       unlist() %>% unique()
-    write_tsv(tibble(WINDOW = masked_windows),
-              file.path(out_dir, "gene_family_masked_windows.tsv"))
   }
   calls <- calls %>% filter(!(WINDOW %in% masked_windows)) %>%
     log_step(sprintf("3. gene-family mask (%d win)", length(masked_windows)))
 }
+
+# Both artifact masks are written unconditionally (header-only when empty) so
+# downstream steps can DEPEND on them rather than probe for them. The focal
+# enrichment test (introgression_focal_test.R) is the consumer: it re-derives
+# the call set without any support floor but must inherit these two removals,
+# which excise things that are not introgression at all.
+write_tsv(tibble(WINDOW = masked_windows),
+          file.path(out_dir, "gene_family_masked_windows.tsv"))
 
 # -- filter 4: hypervariable across clusters -------------------------------
 multi_cluster <- calls %>%
@@ -343,6 +354,8 @@ multi_cluster <- calls %>%
   pull(WINDOW)
 calls <- calls %>% filter(!(WINDOW %in% multi_cluster)) %>%
   log_step(sprintf("4. hypervariable (%d win)", length(multi_cluster)))
+write_tsv(tibble(WINDOW = multi_cluster),
+          file.path(out_dir, "hypervariable_masked_windows.tsv"))
 
 # -- window coordinates ----------------------------------------------------
 with_coords <- calls %>%

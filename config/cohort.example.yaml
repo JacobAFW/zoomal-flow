@@ -105,9 +105,21 @@ introgression:
   distance_margin: 15
   distance_adaptive: false
   distance_adaptive_quantile: 0.9
-  # Headline: windows introgressed uniquely in Aceh vs the rest of the cluster
-  # its samples fall in (Peninsular). Generalises V1's Aceh-vs-Peninsular step.
+  # Focal subgroup: Aceh (10 samples) inside the Peninsular cluster (35).
+  # The SIGNIFICANCE test on this subgroup is introgression_focal_test.R —
+  # per-window enrichment of Aceh support against the rest of Peninsular,
+  # under its own size-preserving label permutation and its own BH/FDR. It
+  # does NOT pass through per_cluster_min_samples above; the cluster floor and
+  # the focal test are two tests at two scales (spec §9.6).
+  #
+  # The older "windows unique to Aceh" table is still written, but it is now
+  # DESCRIPTIVE ONLY — it carries no p-value and must not be cited as a
+  # result. Cite focal_Aceh_enriched_windows.tsv.
   focal_group: "Aceh"
+  focal_role: "geography"
+  focal_fdr: 0.05
+  focal_permutations: 1000
+  focal_seed: 20260828
   # P. knowlesi hypervariable multigene families. SICAvar + KIR produce
   # false-positive introgression calls, so their windows are masked.
   gene_family_filters: ["SICA", "KIR"]
