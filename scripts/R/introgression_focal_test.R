@@ -100,7 +100,7 @@
 #
 # CLI (flags first, then one or more per-pair call TSVs as bare arguments):
 #   Rscript scripts/R/introgression_focal_test.R \
-#     --clusters     outputs/structure/admix_clusters.tsv \
+#     --clusters     outputs/structure/full/admix_clusters.tsv \
 #     --metadata     outputs/metadata/samples.tsv \
 #     --contig-map   outputs/setup/contig_map.tsv \
 #     --focal-group  Aceh \
@@ -111,9 +111,9 @@
 #     --permutations 1000 \
 #     --seed         20260828 \
 #     --fdr          0.05 \
-#     --out-enriched outputs/introgression/focal_Aceh_enriched_windows.tsv \
-#     --out-tests    outputs/introgression/focal_Aceh_window_tests.tsv \
-#     outputs/introgression/pairs/*.tsv
+#     --out-enriched outputs/introgression/full/focal_Aceh_enriched_windows.tsv \
+#     --out-tests    outputs/introgression/full/focal_Aceh_window_tests.tsv \
+#     outputs/introgression/full/pairs/*.tsv
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -184,6 +184,20 @@ if (length(call_files) == 0) write_empty_and_quit("no per-pair call files given"
 clusters_in <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(SAMPLE = Sample, Cluster) %>%
   distinct()
+# De-clonalization exclusion list (docs/clonality.md). Applied BEFORE the cluster
+# is scoped, so cluster_n, n_focal and n_background — every term the
+# hypergeometric null is built from — describe independent genotypes rather
+# than clonal replicates.
+drop_arg <- args[["exclude"]]
+if (!is_null_arg(drop_arg) && file.exists(drop_arg)) {
+  drop <- readLines(drop_arg, warn = FALSE); drop <- drop[nzchar(drop)]
+  if (length(drop) > 0) {
+    n_before <- nrow(clusters_in)
+    clusters_in <- clusters_in %>% filter(!(SAMPLE %in% drop))
+    say("exclusion list %s: dropped %d, %d samples remain", basename(drop_arg),
+        n_before - nrow(clusters_in), nrow(clusters_in))
+  }
+}
 
 meta <- read_tsv(args[["metadata"]], show_col_types = FALSE)
 if (!("sample_id" %in% names(meta))) stop("metadata has no sample_id column")

@@ -28,7 +28,8 @@
 # CLI:
 #   Rscript introgression_pair.R \
 #     --genotype-table outputs/ibd/combined/hmmIBD_input.tsv \
-#     --clusters       outputs/structure/admix_clusters.tsv \
+#     --clusters       outputs/structure/full/admix_clusters.tsv \
+#     --exclude        outputs/clonality/exclude_unique.txt   # optional \
 #     --pair           Mf__Mn \
 #     --window-size    10000 \
 #     --min-snps       5 \
@@ -38,7 +39,7 @@
 #     --distance-margin 15 \
 #     --distance-adaptive false \
 #     --distance-adaptive-quantile 0.9 \
-#     --out            outputs/introgression/pairs/Mf__Mn.tsv
+#     --out            outputs/introgression/full/pairs/Mf__Mn.tsv
 #
 # Under `--detection-rule distance` the density surface is never built: that
 # rule decides from the raw per-window distances, so a contour pass would be
@@ -123,6 +124,20 @@ write_empty <- function(reason) {
 clusters_in <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(SAMPLE = Sample, Cluster) %>%
   distinct()
+# Cluster DEFINITIONS always come from the full set; the keep-list only
+# controls which of their members take part (docs/clonality.md).
+drop_arg <- args[["exclude"]]
+if (!is.null(drop_arg) && nzchar(drop_arg) && !(drop_arg %in% c("NULL", "None"))
+    && file.exists(drop_arg)) {
+  drop <- readLines(drop_arg, warn = FALSE); drop <- drop[nzchar(drop)]
+  if (length(drop) > 0) {
+    n_before <- nrow(clusters_in)
+    clusters_in <- clusters_in %>% filter(!(SAMPLE %in% drop))
+    message(sprintf("[introgression_pair] exclusion list %s: dropped %d, %d samples remain",
+                    basename(drop_arg), n_before - nrow(clusters_in), nrow(clusters_in)))
+  }
+}
+
 pair_members <- clusters_in %>% filter(Cluster %in% c(kx, ky))
 n_x <- sum(pair_members$Cluster == kx)
 n_y <- sum(pair_members$Cluster == ky)

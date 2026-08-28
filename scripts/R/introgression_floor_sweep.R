@@ -22,7 +22,7 @@
 # CLI:
 #   Rscript scripts/R/introgression_floor_sweep.R \
 #     --cohort      indo \
-#     --clusters    outputs/structure/admix_clusters.tsv \
+#     --clusters    outputs/structure/full/admix_clusters.tsv \
 #     --metadata    outputs/metadata/samples.tsv \
 #     --contig-map  outputs/setup/contig_map.tsv \
 #     --fai         data/reference/strain_A1_H.1.Icor.fasta.fai \
@@ -33,8 +33,8 @@
 #     --focal-group Aceh \
 #     --n-values    "1,2,3,4,5,6,7,8,9,10,12,16,20,25,30,31,32,33,34,35" \
 #     --work-dir    outputs/introgression/_floor_sweep \
-#     --out         outputs/introgression/floor_stability_sweep.tsv \
-#     outputs/introgression/pairs/*.tsv
+#     --out         outputs/introgression/full/floor_stability_sweep.tsv \
+#     outputs/introgression/full/pairs/*.tsv
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({

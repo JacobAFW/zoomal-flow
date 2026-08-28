@@ -17,6 +17,11 @@ Two layers:
    There is no validated reference output for this stage, so these assertions
    ARE the correctness criterion. See docs/introgression_analysis_spec.md §8.
 
+All paths below point at the `full` sample set. Since the clonality increment
+every frequency stage is built twice (full | unique, see docs/clonality.md);
+these assertions are the regression guard that the `full` arm still behaves
+exactly as it did before that axis existed.
+
 The integration tests build the tiny cohort's Stage 5 targets with snakemake if
 they are not already present (a no-op resolving in seconds when they are), and
 skip if the pipeline toolchain is not on PATH.
@@ -35,7 +40,7 @@ AGNOSTIC = Path(__file__).resolve().parent.parent
 TINY     = AGNOSTIC / "tests" / "tiny_cohort"
 CONFIG   = TINY / "config.yaml"
 TRUTH    = TINY / "data" / "introgression_truth.tsv"
-INTRO    = TINY / "outputs" / "introgression"
+INTRO    = TINY / "outputs" / "introgression" / "full"
 
 PAIR_CALLS = INTRO / "pairs" / "RegionA1__RegionB1.tsv"
 FILTERED   = INTRO / "introgressed_windows_filtered.tsv"
@@ -146,7 +151,7 @@ def test_distance_rule_recovers_the_injected_window(stage5, tmp_path):
     proc = subprocess.run(
         ["Rscript", str(AGNOSTIC / "scripts" / "R" / "introgression_pair.R"),
          "--genotype-table", str(TINY / "outputs" / "ibd" / "combined" / "hmmIBD_input.tsv"),
-         "--clusters",       str(TINY / "outputs" / "structure" / "admix_clusters.tsv"),
+         "--clusters",       str(TINY / "outputs" / "structure" / "full" / "admix_clusters.tsv"),
          "--pair",           "RegionA1__RegionB1",
          "--window-size",    "10000",
          "--min-snps",       "5",

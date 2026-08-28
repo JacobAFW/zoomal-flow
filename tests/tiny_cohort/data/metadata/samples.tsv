@@ -49,6 +49,9 @@ sampB_22	CountryB	RegionB1	Human	2025-01-11
 sampB_23	CountryB	RegionB1	Human	2025-02-04
 sampB_24	CountryB	RegionB1	Human	2025-03-15
 sampB_25	CountryB	RegionB1	Human	2025-04-06
+clonB_1	CountryB	RegionB1	Human	2025-01-11
+clonB_2	CountryB	RegionB1	Human	2025-02-04
+clonB_3	CountryB	RegionB1	Human	2025-03-15
 ctrl_1	Control	NA	NA	NA
 ctrl_2	Control	NA	NA	NA
 ctrl_3	Control	NA	NA	NA

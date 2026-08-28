@@ -9,7 +9,14 @@
 #
 # Usage:
 #   Rscript fws_summary.R <fws.tsv> <metadata.tsv> \
-#       <by_country.tsv|NULL> <by_geography.tsv|NULL> <cutoff>
+#       <by_country.tsv|NULL> <by_geography.tsv|NULL> <cutoff> [exclude_list|NULL]
+#
+# DE-CLONALIZATION (optional 6th argument). An exclusion list drops samples
+# COUNTED here (docs/clonality.md). The per-sample Fws itself is untouched —
+# it does not depend on which other samples are present — but the by-group
+# rates do: a clonal block of three polyclonal samples from one province
+# counts that province's polyclonality three times. `full` passes every
+# sample (a no-op); `unique` passes one representative per clonal group.
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -30,8 +37,22 @@ meta_in   <- args[2]
 out_cnt   <- args[3]   # "NULL" → skip
 out_geo   <- args[4]   # "NULL" → skip
 cutoff    <- as.numeric(args[5])
+drop_in   <- if (length(args) >= 6) args[6] else "NULL"
 
 fws  <- read_tsv(fws_in,  show_col_types = FALSE) %>% rename(Fws = Proportion)
+# A DROP-list, not a keep-list: this stage scores every QC-surviving sample,
+# a larger universe than the PLINK/clustered sets downstream. Intersecting
+# against a keep-list drawn from one of those would silently shrink the `full`
+# arm; removing named samples is a true no-op when the list is empty.
+if (!(drop_in %in% c("NULL", "None", "")) && file.exists(drop_in)) {
+  drop <- readLines(drop_in, warn = FALSE); drop <- drop[nzchar(drop)]
+  if (length(drop) > 0) {
+    n_before <- nrow(fws)
+    fws <- fws %>% filter(!(sample %in% drop))
+    message(sprintf("[fws_summary] exclusion list %s: dropped %d, %d samples counted",
+                    basename(drop_in), n_before - nrow(fws), nrow(fws)))
+  }
+}
 meta <- read_tsv(meta_in, show_col_types = FALSE)
 
 # Canonical roles live as lowercase column names in samples.tsv. We only

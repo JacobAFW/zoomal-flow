@@ -36,8 +36,8 @@
 #
 # CLI:
 #   Rscript introgression_headline.R \
-#     --calls       outputs/introgression/introgressed_windows_filtered.tsv \
-#     --clusters    outputs/structure/admix_clusters.tsv \
+#     --calls       outputs/introgression/full/introgressed_windows_filtered.tsv \
+#     --clusters    outputs/structure/full/admix_clusters.tsv \
 #     --metadata    outputs/metadata/samples.tsv \
 #     --focal-group Aceh \
 #     --focal-role  geography \
@@ -96,6 +96,16 @@ if (!(role %in% names(meta))) {
 clusters_in <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(SAMPLE = Sample, Cluster) %>%
   distinct()
+drop_arg <- args[["exclude"]]
+if (!is.null(drop_arg) && nzchar(drop_arg) && !(drop_arg %in% c("NULL", "None"))
+    && file.exists(drop_arg)) {
+  drop <- readLines(drop_arg, warn = FALSE); drop <- drop[nzchar(drop)]
+  if (length(drop) > 0) {
+    clusters_in <- clusters_in %>% filter(!(SAMPLE %in% drop))
+    message(sprintf("[introgression_headline] exclusion list %s: %d samples remain",
+                    basename(drop_arg), nrow(clusters_in)))
+  }
+}
 
 membership <- meta %>%
   dplyr::select(SAMPLE = sample_id, role_value = all_of(role)) %>%

@@ -78,11 +78,11 @@ Expected shape:
 | 0     | `outputs/setup/{vcf_samples,nuclear_contigs,contig_map}.*` | tiny  |
 | 1     | `outputs/qc/snps.qc.vcf.gz`                                | ~16 KB |
 | 2     | `outputs/moi/fws_MOI.tsv`                                  | ~1 KB  |
-| 3     | `outputs/structure/admix_clusters.tsv`                     | ~1 KB  |
+| 3     | `outputs/structure/full/admix_clusters.tsv`                     | ~1 KB  |
 | 3b    | `reports/figures/pca.png`, `njt.png`, …                    | 10s KB |
 | 4     | `outputs/ibd/Region{A1,B1}/*.hmm_fract.txt`                | ~few KB |
 | 4b    | `reports/figures/ibd_connectivity_*.png`                   | ~100 KB |
-| 5     | `outputs/introgression/introgressed_windows_filtered.tsv`  | ~1 KB  |
+| 5     | `outputs/introgression/full/introgressed_windows_filtered.tsv`  | ~1 KB  |
 
 If you break something in a rule and CI ever gets set up, this is the fixture
 to run.

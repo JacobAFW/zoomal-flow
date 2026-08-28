@@ -61,7 +61,7 @@
 # CLI:
 #   Rscript scripts/R/introgression_floor_derivation.R \
 #     --genotype-table outputs/ibd/combined/hmmIBD_input.tsv \
-#     --clusters       outputs/structure/admix_clusters.tsv \
+#     --clusters       outputs/structure/full/admix_clusters.tsv \
 #     --window-size    10000 \
 #     --min-snps       5 \
 #     --min-samples-per-window 2 \
@@ -70,8 +70,8 @@
 #     --max-n          25 \
 #     --target-false-windows 1 \
 #     --fdr-target     0.05 \
-#     --out            outputs/introgression/floor_derivation.tsv \
-#     outputs/introgression/pairs/*.tsv
+#     --out            outputs/introgression/full/floor_derivation.tsv \
+#     outputs/introgression/full/pairs/*.tsv
 # --------------------------------------------------------------------------
 
 suppressPackageStartupMessages({

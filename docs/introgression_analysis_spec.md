@@ -530,8 +530,8 @@ percentage. This derives the floor instead of guessing it, and closes the "no FD
 gap the Malay diagnosis flagged. Two scripts, neither of which re-runs detection — both read
 the cached per-pair calls:
 
-- `scripts/R/introgression_floor_derivation.R` → `outputs/introgression/floor_derivation.tsv`
-- `scripts/R/introgression_floor_sweep.R` → `outputs/introgression/floor_stability_sweep.tsv`
+- `scripts/R/introgression_floor_derivation.R` → `outputs/introgression/full/floor_derivation.tsv`
+- `scripts/R/introgression_floor_sweep.R` → `outputs/introgression/full/floor_stability_sweep.tsv`
 
 #### The null
 

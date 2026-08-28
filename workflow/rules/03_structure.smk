@@ -67,20 +67,20 @@ rule admixture_run:
             hasn't visibly bottomed out by K=10 (rare; usually flatlines).
     """
     input:
-        bed = f"{PATHS['outputs']}/structure/cleaned.ld.bed",
-        bim = f"{PATHS['outputs']}/structure/cleaned.ld.bim",
-        fam = f"{PATHS['outputs']}/structure/cleaned.ld.fam",
+        bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bed",
+        bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bim",
+        fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.fam",
     output:
-        Q   = f"{PATHS['outputs']}/structure/admixture/cleaned.{{K}}.Q",
-        P   = f"{PATHS['outputs']}/structure/admixture/cleaned.{{K}}.P",
-        log = f"{PATHS['logs']}/structure/admixture_K{{K}}.log",
+        Q   = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cleaned.{{K}}.Q",
+        P   = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cleaned.{{K}}.P",
+        log = f"{PATHS['logs']}/structure/{{sampleset}}/admixture_K{{K}}.log",
     threads: 2
     params:
-        admix_dir = f"{PATHS['outputs']}/structure/admixture",
-        ld_prefix = f"{PATHS['outputs']}/structure/cleaned.ld",
+        admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
+        ld_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld",
         cv_folds  = CV_FOLDS,
     message:
-        "[structure] ADMIXTURE K={wildcards.K}"
+        "[structure:{wildcards.sampleset}] ADMIXTURE K={wildcards.K}"
     shell:
         r"""
         mkdir -p {params.admix_dir}
@@ -105,13 +105,14 @@ rule admixture_cv_table:
     TRY:    grep `CV error` admixture_K*.log to spot-check parsing.
     """
     input:
-        logs = expand(f"{PATHS['logs']}/structure/admixture_K{{K}}.log", K=K_RANGE),
+        logs = expand(f"{PATHS['logs']}/structure/{{sampleset}}/admixture_K{{K}}.log",
+                      K=K_RANGE, allow_missing=True),
     output:
-        tsv = f"{PATHS['outputs']}/structure/admixture/cv_error.tsv",
+        tsv = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cv_error.tsv",
     log:
-        f"{PATHS['logs']}/structure/admixture_cv_table.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/admixture_cv_table.log",
     message:
-        "[structure] Building ADMIXTURE CV-error table"
+        "[structure:{wildcards.sampleset}] Building ADMIXTURE CV-error table"
     shell:
         r"""
         echo -e 'K\tCV_error' > {output.tsv}
@@ -147,13 +148,13 @@ rule select_best_k:
     input:
         tsv = rules.admixture_cv_table.output.tsv,
     output:
-        txt = f"{PATHS['outputs']}/structure/best_k.txt",
+        txt = f"{PATHS['outputs']}/structure/{{sampleset}}/best_k.txt",
     log:
-        f"{PATHS['logs']}/structure/select_best_k.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/select_best_k.log",
     params:
         override = "" if K_OVERRIDE is None else str(K_OVERRIDE),
     message:
-        "[structure] Selecting best K"
+        "[structure:{wildcards.sampleset}] Selecting best K"
     shell:
         r"""
         if [ -n "{params.override}" ]; then
@@ -185,14 +186,14 @@ rule admixture_cv_plot:
         tsv = rules.admixture_cv_table.output.tsv,
         bk  = rules.select_best_k.output.txt,
     output:
-        png = f"{PATHS['reports']}/figures/admixture_cv.png",
-        svg = f"{PATHS['reports']}/figures/admixture_cv.svg",
+        png = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_cv.png",
+        svg = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_cv.svg",
     log:
-        f"{PATHS['logs']}/structure/admixture_cv_plot.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/admixture_cv_plot.log",
     params:
         script = str(_AGNOSTIC / "scripts" / "R" / "plot_admixture_cv.R"),
     message:
-        "[structure] Plotting ADMIXTURE CV error"
+        "[structure:{wildcards.sampleset}] Plotting ADMIXTURE CV error"
     shell:
         r"""
         mkdir -p $(dirname {output.png})
@@ -229,20 +230,20 @@ checkpoint assign_clusters:
     """
     input:
         bk       = rules.select_best_k.output.txt,
-        Q_all    = expand(f"{PATHS['outputs']}/structure/admixture/cleaned.{{K}}.Q",
-                          K=K_RANGE),
-        fam      = f"{PATHS['outputs']}/structure/cleaned.fam",
+        Q_all    = expand(f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cleaned.{{K}}.Q",
+                          K=K_RANGE, allow_missing=True),
+        fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
         metadata = rules.validate_metadata.output.tsv,
     output:
-        tsv = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+        tsv = f"{PATHS['outputs']}/structure/{{sampleset}}/admix_clusters.tsv",
     log:
-        f"{PATHS['logs']}/structure/assign_clusters.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/assign_clusters.log",
     params:
-        admix_dir = f"{PATHS['outputs']}/structure/admixture",
+        admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
         mode      = LABEL_MODE,
         script    = str(_AGNOSTIC / "scripts" / "R" / "assign_clusters.R"),
     message:
-        "[structure] Assigning clusters (mode={params.mode})"
+        "[structure:{wildcards.sampleset}] Assigning clusters (mode={params.mode})"
     shell:
         r"""
         K=$(cat {input.bk})
@@ -274,20 +275,20 @@ rule pca:
             country-only and PC2 hits region, your structure is hierarchical.
     """
     input:
-        bed = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam = f"{PATHS['outputs']}/structure/cleaned.fam",
+        bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bed",
+        bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bim",
+        fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
     output:
-        eigenvec = f"{PATHS['outputs']}/structure/Pk.eigenvec",
-        eigenval = f"{PATHS['outputs']}/structure/Pk.eigenval",
+        eigenvec = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.eigenvec",
+        eigenval = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.eigenval",
     log:
-        f"{PATHS['logs']}/structure/pca.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/pca.log",
     threads: config["compute"]["threads_heavy"]
     params:
-        in_prefix  = f"{PATHS['outputs']}/structure/cleaned",
-        out_prefix = f"{PATHS['outputs']}/structure/Pk",
+        in_prefix  = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned",
+        out_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk",
     message:
-        "[structure] PLINK --pca"
+        "[structure:{wildcards.sampleset}] PLINK --pca"
     shell:
         r"""
         plink2 --bfile {params.in_prefix} \
@@ -314,11 +315,11 @@ rule pca_variance:
     input:
         eigenval = rules.pca.output.eigenval,
     output:
-        tsv = f"{PATHS['outputs']}/structure/pca_variance.tsv",
+        tsv = f"{PATHS['outputs']}/structure/{{sampleset}}/pca_variance.tsv",
     log:
-        f"{PATHS['logs']}/structure/pca_variance.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/pca_variance.log",
     message:
-        "[structure] Tidying PCA variance percentages"
+        "[structure:{wildcards.sampleset}] Tidying PCA variance percentages"
     shell:
         r"""
         awk 'BEGIN{{OFS="\t"; print "PC","variance_percent"}}
@@ -341,20 +342,20 @@ rule distance_matrix:
             check the cohort splits before Stage-3b adds colour + labels.
     """
     input:
-        bed = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam = f"{PATHS['outputs']}/structure/cleaned.fam",
+        bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bed",
+        bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bim",
+        fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
     output:
-        dist    = f"{PATHS['outputs']}/structure/Pk.dist",
-        dist_id = f"{PATHS['outputs']}/structure/Pk.dist.id",
+        dist    = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.dist",
+        dist_id = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.dist.id",
     log:
-        f"{PATHS['logs']}/structure/distance_matrix.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/distance_matrix.log",
     threads: config["compute"]["threads_heavy"]
     params:
-        in_prefix  = f"{PATHS['outputs']}/structure/cleaned",
-        out_prefix = f"{PATHS['outputs']}/structure/Pk",
+        in_prefix  = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned",
+        out_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk",
     message:
-        "[structure] PLINK --distance square"
+        "[structure:{wildcards.sampleset}] PLINK --distance square"
     shell:
         r"""
         plink --bfile {params.in_prefix} \
@@ -389,13 +390,13 @@ if GIS_FILE:
             gis_ref  = GIS_FILE,
             metadata = rules.validate_metadata.output.tsv,
         output:
-            tsv = f"{PATHS['outputs']}/structure/admix_clusters_gis.tsv",
+            tsv = f"{PATHS['outputs']}/structure/{{sampleset}}/admix_clusters_gis.tsv",
         log:
-            f"{PATHS['logs']}/structure/gis_join.log",
+            f"{PATHS['logs']}/structure/{{sampleset}}/gis_join.log",
         params:
             script = str(_AGNOSTIC / "scripts" / "R" / "gis_join.R"),
         message:
-            "[structure] Joining clusters to GIS coordinates"
+            "[structure:{wildcards.sampleset}] Joining clusters to GIS coordinates"
         shell:
             r"""
             Rscript {params.script} \

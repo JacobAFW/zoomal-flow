@@ -94,31 +94,36 @@ if HAS_COUNTRY or HAS_GEOGRAPHY:
               Hardcoding `Country` / `State` would break for any cohort
               that uses different column names.
         TUNABLES: moi.fws_polyclonal_cutoff, metadata.roles.{country,geography}
-        OUTPUT: {outputs}/moi/fws_by_country.tsv (if country role present)
-                {outputs}/moi/fws_by_geography.tsv (if geography role present)
+        OUTPUT: {outputs}/moi/{sampleset}/fws_by_country.tsv (if country role)
+                {outputs}/moi/{sampleset}/fws_by_geography.tsv (if geography role)
         TRY:    null out metadata.roles.country in your config — the country
                 summary drops out of the DAG with a logged note; the
                 geography summary continues if its role is still set.
         """
         input:
+            # The per-sample Fws is NOT recomputed — it does not depend on which
+            # other samples are present. Only the BY-GROUP counts do: a clonal
+            # block of 3 polyclonal samples in one province inflates that
+            # province's polyclonality rate threefold.
             fws      = f"{PATHS['outputs']}/moi/fws_MOI.tsv",
             metadata = rules.validate_metadata.output.tsv,
+            exclude  = lambda wc: sampleset_exclude(wc.sampleset),
         output:
-            country   = (f"{PATHS['outputs']}/moi/fws_by_country.tsv"
+            country   = (f"{PATHS['outputs']}/moi/{{sampleset}}/fws_by_country.tsv"
                          if HAS_COUNTRY else []),
-            geography = (f"{PATHS['outputs']}/moi/fws_by_geography.tsv"
+            geography = (f"{PATHS['outputs']}/moi/{{sampleset}}/fws_by_geography.tsv"
                          if HAS_GEOGRAPHY else []),
         log:
-            f"{PATHS['logs']}/moi/fws_summary.log",
+            f"{PATHS['logs']}/moi/{{sampleset}}/fws_summary.log",
         params:
             cutoff       = config["moi"]["fws_polyclonal_cutoff"],
-            country_arg  = (f"{PATHS['outputs']}/moi/fws_by_country.tsv"
+            country_arg  = (f"{PATHS['outputs']}/moi/{{sampleset}}/fws_by_country.tsv"
                             if HAS_COUNTRY else "NULL"),
-            geo_arg      = (f"{PATHS['outputs']}/moi/fws_by_geography.tsv"
+            geo_arg      = (f"{PATHS['outputs']}/moi/{{sampleset}}/fws_by_geography.tsv"
                             if HAS_GEOGRAPHY else "NULL"),
             script       = str(_AGNOSTIC / "scripts" / "R" / "fws_summary.R"),
         message:
-            "[moi] Summarising Fws by role(s)"
+            "[moi:{wildcards.sampleset}] Summarising Fws by role(s) (de-clonalized where sampleset=unique)"
         shell:
             r"""
             mkdir -p $(dirname {input.fws})
@@ -128,6 +133,7 @@ if HAS_COUNTRY or HAS_GEOGRAPHY:
                 {params.country_arg} \
                 {params.geo_arg} \
                 {params.cutoff} \
+                {input.exclude} \
                 > {log} 2>&1
             """
 

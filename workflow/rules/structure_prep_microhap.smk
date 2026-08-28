@@ -35,14 +35,14 @@ rule microhap_structure_prep_stub:
     input:
         vcf = f"{PATHS['outputs']}/qc/snps.qc.vcf.gz",
     output:
-        bed    = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim    = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam    = f"{PATHS['outputs']}/structure/cleaned.fam",
-        ld_bed = f"{PATHS['outputs']}/structure/cleaned.ld.bed",
-        ld_bim = f"{PATHS['outputs']}/structure/cleaned.ld.bim",
-        ld_fam = f"{PATHS['outputs']}/structure/cleaned.ld.fam",
+        bed    = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bed",
+        bim    = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bim",
+        fam    = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
+        ld_bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bed",
+        ld_bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bim",
+        ld_fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.fam",
     log:
-        f"{PATHS['logs']}/structure/microhap_structure_prep_stub.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/microhap_structure_prep_stub.log",
     message:
         "[structure:microhap] STUB — see structure_prep_microhap.smk for contract"
     shell:

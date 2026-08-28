@@ -50,15 +50,19 @@ rule run_rehh_ihs:
     input:
         vcf      = rules.combined_vcf.output.vcf,
         metadata = rules.validate_metadata.output.tsv,
-        clusters = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+        # Cluster definitions are the FULL-set backbone in both arms — the
+        # de-clonalized branch changes WHO is in the case/control sets, not
+        # what the clusters are (docs/clonality.md).
+        clusters = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
+        exclude  = lambda wc: sampleset_exclude(wc.sampleset),
     output:
-        candidates = f"{PATHS['outputs']}/selection/{{model}}/candidate_regions_iHS.tsv",
-        ihs_table  = f"{PATHS['outputs']}/selection/{{model}}/ihs_table.tsv",
-        summary    = f"{PATHS['outputs']}/selection/{{model}}/ihs_summary.tsv",
+        candidates = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/candidate_regions_iHS.tsv",
+        ihs_table  = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_table.tsv",
+        summary    = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_summary.tsv",
     log:
-        f"{PATHS['logs']}/selection/run_rehh_ihs_{{model}}.log",
+        f"{PATHS['logs']}/selection/{{sampleset}}/run_rehh_ihs_{{model}}.log",
     params:
-        out_dir      = f"{PATHS['outputs']}/selection",
+        out_dir      = f"{PATHS['outputs']}/selection/{{sampleset}}",
         case_filter  = lambda wc: _model_cfg(wc.model)["case_filter"],
         ctrl_filter  = lambda wc: _model_cfg(wc.model)["control_filter"],
         threshold    = SELECTION.get("ihs_threshold", 4),
@@ -69,7 +73,7 @@ rule run_rehh_ihs:
         script       = str(_AGNOSTIC / "scripts" / "R" / "run_rehh_ihs.R"),
     threads: 1
     message:
-        "[selection] iHS scan: {wildcards.model}"
+        "[selection:{wildcards.sampleset}] iHS scan: {wildcards.model}"
     shell:
         r"""
         mkdir -p {params.out_dir}/{wildcards.model} $(dirname {log})
@@ -80,6 +84,7 @@ rule run_rehh_ihs:
             --model          "{wildcards.model}" \
             --case-filter    "{params.case_filter}" \
             --control-filter "{params.ctrl_filter}" \
+            --exclude        {input.exclude} \
             --threshold      {params.threshold} \
             --p-threshold    {params.p_threshold} \
             --window-size    {params.window_size} \
@@ -106,16 +111,16 @@ rule plot_ihs_scan:
     input:
         ihs_table = rules.run_rehh_ihs.output.ihs_table,
     output:
-        scan_png = f"{PATHS['outputs']}/selection/{{model}}/ihs_scan.png",
-        pval_png = f"{PATHS['outputs']}/selection/{{model}}/ihs_pvalue.png",
-        scan_svg = f"{PATHS['outputs']}/selection/{{model}}/ihs_scan.svg",
-        pval_svg = f"{PATHS['outputs']}/selection/{{model}}/ihs_pvalue.svg",
+        scan_png = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_scan.png",
+        pval_png = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_pvalue.png",
+        scan_svg = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_scan.svg",
+        pval_svg = f"{PATHS['outputs']}/selection/{{sampleset}}/{{model}}/ihs_pvalue.svg",
     log:
-        f"{PATHS['logs']}/selection/plot_ihs_scan_{{model}}.log",
+        f"{PATHS['logs']}/selection/{{sampleset}}/plot_ihs_scan_{{model}}.log",
     params:
         script = str(_AGNOSTIC / "scripts" / "R" / "plot_ihs_scan.R"),
     message:
-        "[selection] iHS scan + p-value plots: {wildcards.model}"
+        "[selection:{wildcards.sampleset}] iHS scan + p-value plots: {wildcards.model}"
     shell:
         r"""
         mkdir -p $(dirname {output.scan_png}) $(dirname {log})

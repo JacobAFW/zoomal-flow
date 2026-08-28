@@ -64,15 +64,43 @@ if ("group" %in% names(meta)) {
   meta <- meta %>% dplyr::select(-group)
 }
 
+# De-clonalization keep-list (docs/clonality.md). Restricts who is eligible
+# for the case and control sets. iHS is a haplotype-FREQUENCY statistic, so
+# clonal replicates in either arm distort exactly the quantity it measures.
+.drop_arg <- args[["exclude"]]
+.drop <- NULL
+if (!is.null(.drop_arg) && nzchar(.drop_arg) && !(.drop_arg %in% c("NULL", "None"))
+    && file.exists(.drop_arg)) {
+  d <- readLines(.drop_arg, warn = FALSE); d <- d[nzchar(d)]
+  if (length(d) > 0) {
+    .drop <- d
+    message(sprintf("[run_rehh_ihs] exclusion list %s: %d samples dropped",
+                    basename(.drop_arg), length(.drop)))
+  }
+}
+
 clu <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(sample_id = Sample, group = Cluster) %>% distinct()
 
 m <- meta %>% left_join(clu, by = "sample_id")
+if (!is.null(.drop)) {
+  n_before <- nrow(m)
+  m <- m %>% filter(!(sample_id %in% .drop))
+  message(sprintf("[run_rehh_ihs] de-clonalized: %d of %d samples eligible",
+                  nrow(m), n_before))
+}
 
 case_ids  <- m %>% filter(!!rlang::parse_expr(case_filter))  %>% pull(sample_id)
 ctrl_ids  <- m %>% filter(!!rlang::parse_expr(ctrl_filter))  %>% pull(sample_id)
-if (length(case_ids)  < 5) stop("Case set < 5 samples — cannot run iHS.")
-if (length(ctrl_ids)  < 5) stop("Control set < 5 samples — cannot run iHS.")
+# A de-clonalized arm can legitimately fall under the minimum where the full
+# set cleared it — that is a finding about how much of the case set was clonal
+# replication, so say so rather than failing with a bare count.
+.floor_msg <- function(side, n) sprintf(
+  "%s set has %d samples (< 5) — cannot run iHS.%s", side, n,
+  if (is.null(.drop)) "" else
+    " This is the DE-CLONALIZED sample set: the full-set arm may well have cleared the minimum, which itself says the set was largely clonal replicates.")
+if (length(case_ids)  < 5) stop(.floor_msg("Case", length(case_ids)))
+if (length(ctrl_ids)  < 5) stop(.floor_msg("Control", length(ctrl_ids)))
 keep_ids <- unique(c(case_ids, ctrl_ids))
 message(sprintf("[run_rehh_ihs] model=%s | case=%d | control=%d | total=%d",
                 model, length(case_ids), length(ctrl_ids), length(keep_ids)))

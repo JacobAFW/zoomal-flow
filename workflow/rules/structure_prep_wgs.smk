@@ -274,6 +274,9 @@ rule find_duplicates:
 rule final_filters:
     """
     Sequential 4-step filter chain (legacy order V→S→V→M):
+      0. Drop the {sampleset} exclusion list alongside the duplicates
+         (`full` = empty, a no-op; `unique` = the non-representative members
+         of each clonal group).
       1. Remove duplicate replicates + lenient variant filter (--geno 0.20).
       2. Sample-missingness filter (--mind) on the cleaned variants.
       3. Stricter variant filter (--geno) on the post-sample set.
@@ -284,39 +287,54 @@ rule final_filters:
           Indonesia cohort because the 1.4M-variant unfiltered set carries
           many low-coverage sites that drag down per-sample missingness.
           The V→S→V→M order matches HPC behaviour and recovers the cohort.
-    TUNABLES: structure.max_sample_missing (step 2 --mind),
+    NOTE: the MAF filter (step 4) is re-applied per sample set on purpose —
+          allele frequencies are exactly what clonal pseudo-replication
+          distorts, so the de-clonalized arm must re-derive them rather than
+          inherit the full-set variant list.
+    TUNABLES: clonality.declonalize, structure.max_sample_missing (step 2 --mind),
               structure.max_variant_missing (step 3 --geno),
               structure.min_maf (step 4 --maf)
-    OUTPUT: {outputs}/structure/cleaned.{bed,bim,fam}
+    OUTPUT: {outputs}/structure/{sampleset}/cleaned.{bed,bim,fam}
     TRY:    bump max_sample_missing to 0.05 and re-run — every step shows
             the cohort shrinking by tens.
     """
     input:
         bed  = rules.vcf_to_plink.output.bed,
         dups = rules.find_duplicates.output.dups,
+        # The {sampleset} drop-list. EMPTY for `full`, so that arm is
+        # bit-identical to the pre-clonality pipeline; for `unique` it is the
+        # non-representative members of every clonal group.
+        exclude = lambda wc: sampleset_exclude(wc.sampleset),
     output:
-        bed = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam = f"{PATHS['outputs']}/structure/cleaned.fam",
+        bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bed",
+        bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.bim",
+        fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
     log:
-        f"{PATHS['logs']}/structure/final_filters.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/final_filters.log",
     params:
         prefix       = f"{PATHS['outputs']}/structure/Pk",
-        out_prefix   = f"{PATHS['outputs']}/structure/cleaned",
-        step1_prefix = f"{PATHS['outputs']}/structure/Pk.v1",
-        step2_prefix = f"{PATHS['outputs']}/structure/Pk.v1s",
-        step3_prefix = f"{PATHS['outputs']}/structure/Pk.v1sv2",
+        out_prefix   = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned",
+        step1_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.v1",
+        step2_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.v1s",
+        step3_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/Pk.v1sv2",
         mind         = STRUCTURE["max_sample_missing"],
         geno         = STRUCTURE["max_variant_missing"],
         maf          = STRUCTURE["min_maf"],
     threads: config["compute"]["threads_heavy"]
     message:
-        "[structure:wgs] Final V→S→V→M filter chain"
+        "[structure:wgs:{wildcards.sampleset}] Final V→S→V→M filter chain"
     shell:
         r"""
+        mkdir -p $(dirname {params.out_prefix}) $(dirname {log})
+        # plink2 --remove wants FID IID; the drop-lists are plain sample ids
+        # (what every R script downstream wants), so widen them here. FID ==
+        # IID throughout because the VCF import used --double-id. For the
+        # `full` arm this file is EMPTY, so the chain below is byte-for-byte
+        # what it was before clonality handling existed.
+        awk '{{print $1"\t"$1}}' {input.exclude} > {params.out_prefix}.drop.tmp
         plink2 --bfile {params.prefix} \
             --allow-extra-chr \
-            --remove {input.dups} \
+            --remove {input.dups} {params.out_prefix}.drop.tmp \
             --geno 0.20 \
             --make-bed --threads {threads} \
             --out {params.step1_prefix} > {log} 2>&1
@@ -335,7 +353,8 @@ rule final_filters:
             --maf {params.maf} \
             --make-bed --threads {threads} \
             --out {params.out_prefix} >> {log} 2>&1
-        rm -f {params.step1_prefix}.bed {params.step1_prefix}.bim {params.step1_prefix}.fam {params.step1_prefix}.log \
+        rm -f {params.out_prefix}.drop.tmp \
+              {params.step1_prefix}.bed {params.step1_prefix}.bim {params.step1_prefix}.fam {params.step1_prefix}.log \
               {params.step2_prefix}.bed {params.step2_prefix}.bim {params.step2_prefix}.fam {params.step2_prefix}.log {params.step2_prefix}.mindrem.id \
               {params.step3_prefix}.bed {params.step3_prefix}.bim {params.step3_prefix}.fam {params.step3_prefix}.log
         echo "Final cohort:" >> {log}
@@ -366,18 +385,18 @@ rule ld_prune:
         bim = rules.final_filters.output.bim,
         fam = rules.final_filters.output.fam,
     output:
-        prune_in = f"{PATHS['outputs']}/structure/cleaned.prune.in",
-        bed      = f"{PATHS['outputs']}/structure/cleaned.ld.bed",
-        bim      = f"{PATHS['outputs']}/structure/cleaned.ld.bim",
-        fam      = f"{PATHS['outputs']}/structure/cleaned.ld.fam",
+        prune_in = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.prune.in",
+        bed      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bed",
+        bim      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bim",
+        fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.fam",
     log:
-        f"{PATHS['logs']}/structure/ld_prune.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/ld_prune.log",
     params:
-        in_prefix  = f"{PATHS['outputs']}/structure/cleaned",
-        out_prefix = f"{PATHS['outputs']}/structure/cleaned.ld",
+        in_prefix  = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned",
+        out_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld",
     threads: config["compute"]["threads_heavy"]
     message:
-        "[structure:wgs] LD-pruning before ADMIXTURE"
+        "[structure:wgs:{wildcards.sampleset}] LD-pruning before ADMIXTURE"
     shell:
         r"""
         plink2 --bfile {params.in_prefix} \

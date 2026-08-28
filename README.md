@@ -95,6 +95,37 @@ tour of every rule, its tunables, and something to try at each step.
 
 ---
 
+## Clonality — every frequency result is produced twice
+
+Clonal samples are near-identical genotypes. Counting each as independent evidence is
+pseudo-replication, and it biases everything that is fundamentally a frequency or a count:
+allele frequencies, ADMIXTURE proportions, per-group polyclonality rates, introgression window
+support, iHS case/control. *Plasmodium* cohorts are frequently clonal, so the pipeline treats
+this as first-class rather than optional.
+
+Four stages — structure, introgression, group summaries, selection — are each built **twice**,
+under a `{sampleset}` axis:
+
+```
+outputs/<stage>/full/     every sample (the operational backbone)
+outputs/<stage>/unique/   one representative per clonal group (the comparison arm)
+outputs/<stage>/declonalization_comparison.tsv    the two, side by side
+```
+
+Both arms always. The comparison is the feature: you can see, per claim, how much of it survives
+collapsing clonal replicates, rather than taking the pipeline on faith. Clonality is detected on
+the **full** set (it has to be — you cannot find clonal groups in a set you already thinned), and
+the full-set clusters stay authoritative for Stage 4 and the Stage-5 cluster definitions. One
+pass, never iterated.
+
+Rationale, the architecture, the representative rule, and how to read the comparison:
+**`docs/clonality.md`**. Turn it off with `clonality.declonalize: false`.
+
+Upgrading a cohort that was run before this existed:
+`bash scripts/sh/migrate_to_sampleset_layout.sh` (idempotent, `--undo` reverses it).
+
+---
+
 ## Introgression (Stage 5) — read before you run it
 
 Stage 5 asks, per genomic window: does a sample carry the genetic signature of
@@ -157,7 +188,7 @@ known ground truth:
 ```bash
 Rscript scripts/R/introgression_rule_sweep.R \
   --genotype-table tests/tiny_cohort/outputs/ibd/combined/hmmIBD_input.tsv \
-  --clusters       tests/tiny_cohort/outputs/structure/admix_clusters.tsv \
+  --clusters       tests/tiny_cohort/outputs/structure/full/admix_clusters.tsv \
   --contig-map     tests/tiny_cohort/outputs/setup/contig_map.tsv \
   --truth          tests/tiny_cohort/data/introgression_truth.tsv \
   --pair           RegionA1__RegionB1 \

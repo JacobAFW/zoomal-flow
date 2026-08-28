@@ -13,7 +13,7 @@
 #
 #   Rscript scripts/R/introgression_rule_sweep.R \
 #     --genotype-table tests/tiny_cohort/outputs/ibd/combined/hmmIBD_input.tsv \
-#     --clusters       tests/tiny_cohort/outputs/structure/admix_clusters.tsv \
+#     --clusters       tests/tiny_cohort/outputs/structure/full/admix_clusters.tsv \
 #     --contig-map     tests/tiny_cohort/outputs/setup/contig_map.tsv \
 #     --truth          tests/tiny_cohort/data/introgression_truth.tsv \
 #     --pair           RegionA1__RegionB1 \

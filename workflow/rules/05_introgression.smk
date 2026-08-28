@@ -42,7 +42,7 @@ import os
 
 INTRO = config.get("introgression", {})
 
-INTRO_DIR   = f"{PATHS['outputs']}/introgression"
+INTRO_DIR   = f"{PATHS['outputs']}/introgression/{{sampleset}}"
 INTRO_FOCAL = INTRO.get("focal_group")
 INTRO_ROLE  = INTRO.get("focal_role") or "geography"
 INTRO_GFF   = INTRO.get("gff")
@@ -131,10 +131,20 @@ def _pair_id(kx, ky):
 
 
 def introgression_pair_targets(wildcards):
-    """FINAL_TARGETS / aggregate input: one call file per pair."""
-    admix_tsv = checkpoints.assign_clusters.get(**wildcards).output.tsv
-    return [f"{INTRO_DIR}/pairs/{_pair_id(kx, ky)}.tsv"
-            for kx, ky in _intro_pairs(admix_tsv)]
+    """
+    FINAL_TARGETS / aggregate input: one call file per pair, per sample set.
+
+    Cluster membership — and therefore the PAIR LIST — always comes from the
+    FULL-set assignment, in both arms. De-clonalization changes which samples
+    are inside a cluster, never what the clusters are; re-deriving clusters on
+    the de-clonalized set and then detecting introgression against them would
+    be circular (docs/clonality.md).
+    """
+    admix_tsv = checkpoints.assign_clusters.get(sampleset="full").output.tsv
+    pairs = [_pair_id(kx, ky) for kx, ky in _intro_pairs(admix_tsv)]
+    sets = [wildcards.sampleset] if hasattr(wildcards, "sampleset") else SAMPLE_SETS
+    return [f"{PATHS['outputs']}/introgression/{ss}/pairs/{pid}.tsv"
+            for ss in sets for pid in pairs]
 
 
 wildcard_constraints:
@@ -180,11 +190,12 @@ rule introgression_pair:
     """
     input:
         gt_table = rules.combined_genotype_table.output.tsv,
-        clusters = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+        clusters = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
+        exclude  = lambda wc: sampleset_exclude(wc.sampleset),
     output:
         calls = f"{INTRO_DIR}/pairs/{{pair}}.tsv",
     log:
-        f"{PATHS['logs']}/introgression/pair_{{pair}}.log",
+        f"{PATHS['logs']}/introgression/{{sampleset}}/pair_{{pair}}.log",
     params:
         window_size = INTRO.get("window_size_bp", 10000),
         min_snps    = INTRO.get("min_snps_per_window", 5),
@@ -197,13 +208,14 @@ rule introgression_pair:
         script      = str(_AGNOSTIC / "scripts" / "R" / "introgression_pair.R"),
     threads: 1
     message:
-        "[introgression] Pair detection: {wildcards.pair}"
+        "[introgression:{wildcards.sampleset}] Pair detection: {wildcards.pair}"
     shell:
         r"""
         mkdir -p $(dirname {output.calls}) $(dirname {log})
         Rscript {params.script} \
             --genotype-table      {input.gt_table} \
             --clusters            {input.clusters} \
+            --exclude             {input.exclude} \
             --pair                {wildcards.pair} \
             --window-size         {params.window_size} \
             --min-snps            {params.min_snps} \
@@ -259,7 +271,8 @@ rule introgression_aggregate:
     """
     input:
         calls    = introgression_pair_targets,
-        clusters = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+        clusters = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
+        exclude  = lambda wc: sampleset_exclude(wc.sampleset),
         metadata = rules.validate_metadata.output.tsv,
         cmap     = f"{PATHS['outputs']}/setup/contig_map.tsv",
         # _FAI is the config-derived reference index (Snakefile: REF["fasta"] + ".fai").
@@ -280,7 +293,7 @@ rule introgression_aggregate:
         by_geo     = ([f"{INTRO_DIR}/introgression_by_geography.tsv"]
                       if ROLES.get("geography") else []),
     log:
-        f"{PATHS['logs']}/introgression/aggregate.log",
+        f"{PATHS['logs']}/introgression/{{sampleset}}/aggregate.log",
     params:
         out_dir      = INTRO_DIR,
         window_size  = INTRO.get("window_size_bp", 10000),
@@ -291,12 +304,13 @@ rule introgression_aggregate:
         gene_kw      = ",".join(INTRO.get("gene_family_filters") or []) or "NULL",
         script       = str(_AGNOSTIC / "scripts" / "R" / "introgression_aggregate.R"),
     message:
-        "[introgression] Aggregate + cross-dataset filters"
+        "[introgression:{wildcards.sampleset}] Aggregate + cross-dataset filters"
     shell:
         r"""
         mkdir -p {params.out_dir} $(dirname {log})
         Rscript {params.script} \
             --clusters               {input.clusters} \
+            --exclude                {input.exclude} \
             --metadata               {input.metadata} \
             --contig-map             {input.cmap} \
             --fai                    {input.fai} \
@@ -335,15 +349,15 @@ rule plot_introgression_shoulder:
     input:
         counts = rules.introgression_aggregate.output.raw_counts,
     output:
-        png = f"{PATHS['reports']}/figures/introgression_shoulder.png",
-        svg = f"{PATHS['reports']}/figures/introgression_shoulder.svg",
+        png = f"{PATHS['reports']}/figures/{{sampleset}}/introgression_shoulder.png",
+        svg = f"{PATHS['reports']}/figures/{{sampleset}}/introgression_shoulder.svg",
     log:
-        f"{PATHS['logs']}/introgression/plot_shoulder.log",
+        f"{PATHS['logs']}/introgression/{{sampleset}}/plot_shoulder.log",
     params:
         threshold = INTRO.get("min_samples_per_window", 2),
         script    = str(_AGNOSTIC / "scripts" / "R" / "plot_introgression_shoulder.R"),
     message:
-        "[introgression:figures] Shoulder plot"
+        "[introgression:figures:{wildcards.sampleset}] Shoulder plot"
     shell:
         r"""
         mkdir -p $(dirname {output.png}) $(dirname {log})
@@ -387,20 +401,21 @@ if INTRO_FOCAL:
         """
         input:
             calls    = rules.introgression_aggregate.output.filtered,
-            clusters = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+            clusters = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
+            exclude  = lambda wc: sampleset_exclude(wc.sampleset),
             metadata = rules.validate_metadata.output.tsv,
         output:
             unique    = f"{INTRO_DIR}/unique_windows_in_{INTRO_FOCAL}_with_freq_and_coords.tsv",
             per_chrom = f"{INTRO_DIR}/unique_windows_per_chrom_{INTRO_FOCAL}_vs_rest.tsv",
         log:
-            f"{PATHS['logs']}/introgression/headline_{INTRO_FOCAL}.log",
+            f"{PATHS['logs']}/introgression/{{sampleset}}/headline_{INTRO_FOCAL}.log",
         params:
             out_dir = INTRO_DIR,
             focal   = INTRO_FOCAL,
             role    = INTRO_ROLE,
             script  = str(_AGNOSTIC / "scripts" / "R" / "introgression_headline.R"),
         message:
-            f"[introgression] Descriptive: windows unique to '{INTRO_FOCAL}' (not a test)"
+            f"[introgression:{{wildcards.sampleset}}] Descriptive: windows unique to '{INTRO_FOCAL}' (not a test)"
         shell:
             r"""
             mkdir -p {params.out_dir} $(dirname {log})
@@ -408,6 +423,7 @@ if INTRO_FOCAL:
                 --calls         {input.calls} \
                 --clusters      {input.clusters} \
                 --metadata      {input.metadata} \
+                --exclude       {input.exclude} \
                 --focal-group   "{params.focal}" \
                 --focal-role    "{params.role}" \
                 --out-dir       {params.out_dir} \
@@ -455,7 +471,8 @@ if INTRO_FOCAL:
         """
         input:
             calls      = introgression_pair_targets,
-            clusters   = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+            clusters   = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
+            exclude    = lambda wc: sampleset_exclude(wc.sampleset),
             metadata   = rules.validate_metadata.output.tsv,
             cmap       = f"{PATHS['outputs']}/setup/contig_map.tsv",
             gene_mask  = rules.introgression_aggregate.output.gene_mask,
@@ -464,7 +481,7 @@ if INTRO_FOCAL:
             enriched = f"{INTRO_DIR}/focal_{INTRO_FOCAL}_enriched_windows.tsv",
             tests    = f"{INTRO_DIR}/focal_{INTRO_FOCAL}_window_tests.tsv",
         log:
-            f"{PATHS['logs']}/introgression/focal_test_{INTRO_FOCAL}.log",
+            f"{PATHS['logs']}/introgression/{{sampleset}}/focal_test_{INTRO_FOCAL}.log",
         params:
             focal       = INTRO_FOCAL,
             role        = INTRO_ROLE,
@@ -474,12 +491,13 @@ if INTRO_FOCAL:
             fdr         = INTRO.get("focal_fdr", 0.05),
             script      = str(_AGNOSTIC / "scripts" / "R" / "introgression_focal_test.R"),
         message:
-            f"[introgression] Focal enrichment test: '{INTRO_FOCAL}' vs the rest of its cluster"
+            f"[introgression:{{wildcards.sampleset}}] Focal enrichment test: '{INTRO_FOCAL}' vs the rest of its cluster"
         shell:
             r"""
             mkdir -p $(dirname {output.enriched}) $(dirname {log})
             Rscript {params.script} \
                 --clusters           {input.clusters} \
+                --exclude            {input.exclude} \
                 --metadata           {input.metadata} \
                 --contig-map         {input.cmap} \
                 --focal-group        "{params.focal}" \
@@ -516,15 +534,15 @@ if INTRO_FOCAL:
         input:
             unique = rules.introgression_headline.output.unique,
         output:
-            png = f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.png",
-            svg = f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.svg",
+            png = f"{PATHS['reports']}/figures/{{sampleset}}/introgression_focal_{INTRO_FOCAL}.png",
+            svg = f"{PATHS['reports']}/figures/{{sampleset}}/introgression_focal_{INTRO_FOCAL}.svg",
         log:
-            f"{PATHS['logs']}/introgression/plot_focal_{INTRO_FOCAL}.log",
+            f"{PATHS['logs']}/introgression/{{sampleset}}/plot_focal_{INTRO_FOCAL}.log",
         params:
             focal  = INTRO_FOCAL,
             script = str(_AGNOSTIC / "scripts" / "R" / "plot_introgression_focal.R"),
         message:
-            f"[introgression:figures] Focal-unique windows: '{INTRO_FOCAL}'"
+            f"[introgression:figures:{{wildcards.sampleset}}] Focal-unique windows: '{INTRO_FOCAL}'"
         shell:
             r"""
             mkdir -p $(dirname {output.png}) $(dirname {log})

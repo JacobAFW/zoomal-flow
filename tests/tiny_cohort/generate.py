@@ -120,6 +120,25 @@ INTRO_WINDOW_START = 40_000          # window [40000, 50000) -> midpoint 45000
 N_INTRO_STRUCTURE_SNPS = 15          # a normal structure/neutral mix, just denser,
 N_INTRO_NEUTRAL_SNPS   = 15          # so the window always clears min_snps_per_window
 
+# --- clonality positive control ------------------------------------------
+# A clonal block: N_CLONAL group-B samples carrying genotypes IDENTICAL to
+# CLONAL_SOURCE at every site. hmmIBD scores them at fract_sites_IBD = 1.0, so
+# Stage 4 groups them, and de-clonalization must collapse them to exactly one
+# representative.
+#
+# They are APPENDED as extra columns after the main VCF has been generated,
+# not drawn inside the generation loop. That matters: inserting samples into
+# the loop would shift every subsequent RNG draw and silently change the
+# genotypes of all 54 pre-existing samples, which would invalidate the Stage-5
+# positive control this fixture already carries. Appending leaves those 54
+# byte-identical.
+#
+# They are group B, and NOT the Stage-5 donor (b[0]), so the injected
+# introgression event in group A is untouched by their presence.
+N_CLONAL      = 3
+CLONAL_SOURCE = "sampB_20"           # the lineage that gets replicated
+CLONAL_PREFIX = "clonB"              # -> clonB_1 .. clonB_N
+
 
 def _rand_base(exclude: str) -> str:
     b = random.choice(BASES)
@@ -160,6 +179,21 @@ def sample_names():
     b = [f"sampB_{i:02d}" for i in range(1, N_GROUP_B + 1)]
     ctrl = [f"ctrl_{i}" for i in range(1, N_CTRL + 1)]
     return a, b, ctrl
+
+
+def clonal_names():
+    """The appended clonal replicates of CLONAL_SOURCE."""
+    return [f"{CLONAL_PREFIX}_{i}" for i in range(1, N_CLONAL + 1)]
+
+
+def clonal_block():
+    """
+    Every member of the clonal group, source first. De-clonalization must keep
+    exactly one of these and drop the rest; which one is decided by the
+    missingness rule, so the test asserts on the SIZE of the collapse rather
+    than on a hardcoded winner.
+    """
+    return [CLONAL_SOURCE] + clonal_names()
 
 
 def build_snp_positions(n_snps: int, contig_len: int, avoid: set = None) -> list:
@@ -260,9 +294,55 @@ def write_samples_tsv(a: list, b: list, ctrl: list):
         rows.append(f"{s}\tCountryA\t{geography_of(s, a)}\tHuman\t{dates_a[i % len(dates_a)]}")
     for i, s in enumerate(b):
         rows.append(f"{s}\tCountryB\tRegionB1\tHuman\t{dates_b[i % len(dates_b)]}")
+    # The clonal replicates share the source's country/geography — the point of
+    # the fixture is that they inflate RegionB1's counts until collapsed.
+    for i, s in enumerate(clonal_names()):
+        rows.append(f"{s}\tCountryB\tRegionB1\tHuman\t{dates_b[i % len(dates_b)]}")
     for s in ctrl:
         rows.append(f"{s}\tControl\tNA\tNA\tNA")
     (DATA_META / "samples.tsv").write_text("\n".join(rows) + "\n")
+
+
+def append_clonal_columns(vcf_path: Path, samples: list):
+    """
+    Append N_CLONAL columns that are genotype-identical to CLONAL_SOURCE.
+
+    Done as a post-pass over the finished VCF text so the 54 pre-existing
+    samples keep byte-identical genotypes — see the note on N_CLONAL above.
+    Depth/AD are redrawn per replicate so the records are not literally
+    duplicated strings; clonality is about the GENOTYPE being the same, and
+    identical read depths would be an unrealistic tell that hmmIBD does not
+    use anyway.
+    """
+    src_idx = samples.index(CLONAL_SOURCE)
+    clones = clonal_names()
+    out = []
+    for line in vcf_path.read_text().splitlines():
+        if line.startswith("##"):
+            out.append(line); continue
+        if line.startswith("#CHROM"):
+            out.append(line + "\t" + "\t".join(clones)); continue
+        fields = line.split("\t")
+        src_call = fields[9 + src_idx]
+        gt = src_call.split(":")[0]
+        out.append(line + "\t" + "\t".join(_call_with_gt(gt) for _ in clones))
+    vcf_path.write_text("\n".join(out) + "\n")
+    print(f"[tiny_cohort] clonal block: {len(clones)} replicate(s) of "
+          f"{CLONAL_SOURCE} appended ({', '.join(clones)})")
+
+
+def write_clonality_truth():
+    """
+    Ground truth for the clonality control: who is in the clonal block. The
+    de-clonalized sample set must contain exactly ONE of these.
+    """
+    path = DATA / "clonality_truth.tsv"
+    lines = ["sample_id\tclonal_source\trole"]
+    lines.append(f"{CLONAL_SOURCE}\t{CLONAL_SOURCE}\tsource")
+    for s in clonal_names():
+        lines.append(f"{s}\t{CLONAL_SOURCE}\treplicate")
+    path.write_text("\n".join(lines) + "\n")
+    print(f"[tiny_cohort] clonality truth -> {path}")
 
 
 def write_vcf(a: list, b: list, ctrl: list) -> Path:
@@ -361,6 +441,8 @@ def write_vcf(a: list, b: list, ctrl: list) -> Path:
             emit(INTRO_CONTIG, pos, "neutral", in_intro_window=True)
 
     write_introgression_truth(injected, b[donor_idx], n_intro_snps)
+    append_clonal_columns(vcf_path, samples)
+    write_clonality_truth()
 
     # Sort by chrom, pos then bgzip + index via bcftools.
     bcftools = shutil.which("bcftools")
@@ -377,6 +459,8 @@ def write_vcf(a: list, b: list, ctrl: list) -> Path:
 
 
 def write_config():
+    n_clonal = N_CLONAL
+    clonal_source = CLONAL_SOURCE
     cfg = textwrap.dedent(f"""\
         # Tiny synthetic cohort — smoke-test config for Stages 0-4.
         cohort:
@@ -424,8 +508,17 @@ def write_config():
           max_variant_missing: 0.20
           admixture_k_min: 2
           admixture_k_max: 3
+          # Pinned. Left on auto, the {n_clonal}-replicate clonal block forms its
+          # OWN ADMIXTURE component (K goes 2 -> 3 and group B splits into
+          # RegionB1_1 / RegionB1_2, the second being exactly the clonal block).
+          # That is a real and rather good demonstration of what clonal
+          # pseudo-replication does to structure inference — see
+          # docs/clonality.md — but this fixture also has to hold a stable
+          # two-cluster backbone for the Stage-5 positive control, whose pair
+          # list and cluster names the tests assert on. So K is fixed here and
+          # the spurious-component effect is documented rather than exercised.
+          admixture_k: 2
           admixture_cv_folds: 5
-          admixture_k: null
           cluster_labelling: "auto"     # tag by majority geography role
           duplicate_id_pattern: null
 
@@ -450,9 +543,22 @@ def write_config():
           detection_rule: "absolute"
           contour_level_other: 5.0e-4
           contour_level_own:   5.0e-4
+          # RegionA2 is exactly the six samples carrying the injected event, so
+          # the focal enrichment test has a known right answer: that window and
+          # nothing else.
           focal_group: "RegionA2"
+          focal_role: "geography"
+          focal_fdr: 0.05
+          focal_permutations: 1000
+          focal_seed: 20260828
           gene_family_filters: []      # no annotation in the fixture
           gff: null
+
+        # The fixture carries a clonal block ({n_clonal} genotype-identical
+        # replicates of {clonal_source}, all RegionB1), so both sample-set arms
+        # are exercised and the comparison outputs have something to report.
+        clonality:
+          declonalize: true
 
         selection:
           models: []

@@ -46,7 +46,8 @@
 #
 # CLI (flags first, then one or more per-pair call TSVs as bare arguments):
 #   Rscript introgression_aggregate.R \
-#     --clusters    outputs/structure/admix_clusters.tsv \
+#     --clusters    outputs/structure/full/admix_clusters.tsv \
+#     --exclude     outputs/clonality/exclude_unique.txt   # optional \
 #     --metadata    outputs/metadata/samples.tsv \
 #     --contig-map  outputs/setup/contig_map.tsv \
 #     --window-size 10000 \
@@ -57,7 +58,7 @@
 #     --fai         data/reference/ref.fasta.fai \
 #     --gene-family-filters "SICA,KIR"              # or "" to disable
 #     --out-dir     outputs/introgression \
-#     outputs/introgression/pairs/*.tsv
+#     outputs/introgression/full/pairs/*.tsv
 #
 # The two ARTIFACT masks (filters 3 and 4) are also written out as window
 # lists — gene_family_masked_windows.tsv and hypervariable_masked_windows.tsv
@@ -119,6 +120,20 @@ gene_keywords <- if (is_null_arg(gene_kw)) character(0) else {
 clusters_in <- read_tsv(args[["clusters"]], show_col_types = FALSE) %>%
   dplyr::select(SAMPLE = Sample, Cluster) %>%
   distinct()
+# Optional de-clonalization exclusion list (docs/clonality.md). Applied BEFORE
+# cluster_n is computed, which matters: the per-cluster support filter is a
+# fraction/floor over cluster size, so a cluster whose size is padded by clonal
+# replicates carries an inflated threshold as well as inflated support.
+drop_arg <- args[["exclude"]]
+if (!is_null_arg(drop_arg) && file.exists(drop_arg)) {
+  drop <- readLines(drop_arg, warn = FALSE); drop <- drop[nzchar(drop)]
+  if (length(drop) > 0) {
+    n_before <- nrow(clusters_in)
+    clusters_in <- clusters_in %>% filter(!(SAMPLE %in% drop))
+    message(sprintf("[introgression_aggregate] exclusion list %s: dropped %d, %d remain",
+                    basename(drop_arg), n_before - nrow(clusters_in), nrow(clusters_in)))
+  }
+}
 cluster_sizes <- clusters_in %>% count(Cluster, name = "cluster_n")
 
 meta <- read_tsv(args[["metadata"]], show_col_types = FALSE)
@@ -147,6 +162,10 @@ log_step <- function(df, label) {
   df
 }
 
+# Drop any call from a sample outside the sample set. The per-pair files are
+# already sample-set-specific, but filtering here as well makes the aggregate
+# correct even when it is pointed at a cached full-set pair directory.
+calls <- calls %>% filter(SAMPLE %in% clusters_in$SAMPLE)
 calls <- log_step(calls, "raw (all pairs)")
 
 # Pre-filter per-window sample counts: the input to the shoulder plot, which

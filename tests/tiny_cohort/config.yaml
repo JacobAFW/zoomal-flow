@@ -44,8 +44,17 @@ structure:
   max_variant_missing: 0.20
   admixture_k_min: 2
   admixture_k_max: 3
+  # Pinned. Left on auto, the 3-replicate clonal block forms its
+  # OWN ADMIXTURE component (K goes 2 -> 3 and group B splits into
+  # RegionB1_1 / RegionB1_2, the second being exactly the clonal block).
+  # That is a real and rather good demonstration of what clonal
+  # pseudo-replication does to structure inference — see
+  # docs/clonality.md — but this fixture also has to hold a stable
+  # two-cluster backbone for the Stage-5 positive control, whose pair
+  # list and cluster names the tests assert on. So K is fixed here and
+  # the spurious-component effect is documented rather than exercised.
+  admixture_k: 2
   admixture_cv_folds: 5
-  admixture_k: null
   cluster_labelling: "auto"     # tag by majority geography role
   duplicate_id_pattern: null
 
@@ -70,8 +79,9 @@ introgression:
   detection_rule: "absolute"
   contour_level_other: 5.0e-4
   contour_level_own:   5.0e-4
-  # RegionA2 is exactly the six samples carrying the injected event, so the
-  # focal enrichment test has a known right answer: that window and nothing else.
+  # RegionA2 is exactly the six samples carrying the injected event, so
+  # the focal enrichment test has a known right answer: that window and
+  # nothing else.
   focal_group: "RegionA2"
   focal_role: "geography"
   focal_fdr: 0.05
@@ -79,6 +89,12 @@ introgression:
   focal_seed: 20260828
   gene_family_filters: []      # no annotation in the fixture
   gff: null
+
+# The fixture carries a clonal block (3 genotype-identical
+# replicates of sampB_20, all RegionB1), so both sample-set arms
+# are exercised and the comparison outputs have something to report.
+clonality:
+  declonalize: true
 
 selection:
   models: []

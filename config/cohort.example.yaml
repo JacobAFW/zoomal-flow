@@ -71,6 +71,12 @@ ibd:
   min_cluster_n: 5
   focal_cluster: "Peninsular"         # slide-10 focus — extra pair-file to compare V1
 
+# Indo cohort: 15 clonal groups covering 33 samples, all within a single
+# cluster each (no straddling). Collapsing them drops 18 samples. Both arms are
+# built; read outputs/<stage>/declonalization_comparison.tsv for the effect.
+clonality:
+  declonalize: true
+
 introgression:
   window_size_bp: 10000
   min_snps_per_window: 5

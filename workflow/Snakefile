@@ -46,6 +46,66 @@ ROLES    = META["roles"]
 CONTROLS = config["controls"]
 QC       = config["qc"]
 
+# --------------------------------------------------------------------------
+# The {sampleset} axis — clonality handling (docs/clonality.md)
+# --------------------------------------------------------------------------
+# Clonal samples are near-identical genotypes. Counting each as independent
+# evidence is pseudo-replication and it biases every FREQUENCY- or COUNT-based
+# analysis. So the four frequency stages (structure, introgression, group
+# summaries, selection) are parameterised by a `{sampleset}` wildcard and BOTH
+# arms are always produced side by side:
+#
+#   full   — every sample. The OPERATIONAL BACKBONE: Stage 4 clonal detection
+#            and the Stage-5 introgression cluster definitions key off the
+#            full-set clusters, and nothing here changes that.
+#   unique — one representative per clonal group + every unclustered sample.
+#            A reporting / comparison branch. It must NOT feed Stage 4 or the
+#            Stage-5 cluster definitions; doing so would be circular.
+#
+# One pass, not iterated: the keep-list is derived once from the full-set
+# clonal groups and used as-is. See docs/clonality.md for why.
+CLONALITY   = config.get("clonality", {}) or {}
+DECLONALIZE = bool(CLONALITY.get("declonalize", True))
+SAMPLE_SETS = ["full"] + (["unique"] if DECLONALIZE else [])
+if not DECLONALIZE:
+    sys.stderr.write(
+        "[clonality] clonality.declonalize is false — only the 'full' sample set "
+        "will be built; no de-clonalized comparison outputs\n"
+    )
+
+
+wildcard_constraints:
+    # Keeps `{sampleset}` from swallowing path separators or matching a
+    # cluster / model name that happens to sit at the same depth.
+    sampleset = r"full|unique",
+
+
+CLONALITY_DIR = f"{PATHS['outputs']}/clonality"
+
+
+def sampleset_exclude(sampleset):
+    """
+    Path of the sample-EXCLUSION list defining one sample set.
+
+    A drop-list, not a keep-list, and that is deliberate. The stages have
+    DIFFERENT natural sample universes — Stage 2 scores Fws for every sample
+    that survived QC (978 on the Indo cohort), Stage 3 works on the PLINK set
+    (807), Stage 5 on the clustered set (553). A keep-list intersected against
+    each of those would silently shrink the `full` arm to whichever universe
+    the list was drawn from, and `full` would stop reproducing the
+    pre-clonality pipeline. "Remove these specific samples" is a no-op for
+    `full` in every stage regardless of universe, so:
+
+        exclude_full.txt    empty        -> full is bit-identical to before
+        exclude_unique.txt  the non-representative members of each clonal group
+
+    The human-facing keep-lists (all_genotypes.txt / unique_genotypes.txt) are
+    written too — they are what you read to see what the sample sets ARE — but
+    the rules wire the drop-list, because that is what is safe.
+    """
+    return f"{CLONALITY_DIR}/exclude_{sampleset}.txt"
+
+
 # Derive the nuclear-contig list from the reference .fai at parse time.
 # This replaces V1's hand-listed nuclear_contigs array. The contig→integer
 # map (for later stages that need integer chrom codes) is written to disk
@@ -68,6 +128,7 @@ ROLES_JSON = Path(PATHS["outputs"]) / "setup" / "roles.json"
 ROLES_JSON.parent.mkdir(parents=True, exist_ok=True)
 ROLES_JSON.write_text(json.dumps(ROLES, indent=2) + "\n")
 
+
 # --------------------------------------------------------------------------
 # Per-stage rules
 # --------------------------------------------------------------------------
@@ -77,9 +138,11 @@ include: "rules/02_moi.smk"
 include: "rules/03_structure.smk"
 include: "rules/03_figures.smk"
 include: "rules/04_ibd.smk"
+include: "rules/04b_clonality.smk"
 include: "rules/04_figures.smk"
 include: "rules/05_introgression.smk"
 include: "rules/06_selection.smk"
+include: "rules/07_declonalization.smk"
 
 # --------------------------------------------------------------------------
 # Default target — Stage 0–3 outputs (this increment adds Stage 3 core).
@@ -97,49 +160,54 @@ FINAL_TARGETS = [
     # Shared MOI seam output — see top of 02_moi.smk for the contract.
     f"{PATHS['outputs']}/moi/fws_MOI.tsv",
     f"{PATHS['outputs']}/moi/exclude_high_moi.txt",
-    # Stage 3 core outputs — figures land in 3b.
-    f"{PATHS['outputs']}/structure/cleaned.fam",
-    f"{PATHS['outputs']}/structure/admixture/cv_error.tsv",
-    f"{PATHS['outputs']}/structure/best_k.txt",
-    f"{PATHS['outputs']}/structure/admix_clusters.tsv",
-    f"{PATHS['outputs']}/structure/Pk.eigenvec",
-    f"{PATHS['outputs']}/structure/pca_variance.tsv",
-    f"{PATHS['outputs']}/structure/Pk.dist",
-    f"{PATHS['reports']}/figures/admixture_cv.png",
 ]
-# Optional GIS-join target — present only if metadata.gis is configured.
-if META.get("gis"):
+# Stage 3 core outputs — figures land in 3b. Built once per sample set:
+# `full` is the backbone every later stage reads; `unique` is the
+# de-clonalized comparison branch (docs/clonality.md).
+for _ss in SAMPLE_SETS:
     FINAL_TARGETS += [
-        f"{PATHS['outputs']}/structure/admix_clusters_gis.tsv",
+        f"{PATHS['outputs']}/structure/{_ss}/cleaned.fam",
+        f"{PATHS['outputs']}/structure/{_ss}/admixture/cv_error.tsv",
+        f"{PATHS['outputs']}/structure/{_ss}/best_k.txt",
+        f"{PATHS['outputs']}/structure/{_ss}/admix_clusters.tsv",
+        f"{PATHS['outputs']}/structure/{_ss}/Pk.eigenvec",
+        f"{PATHS['outputs']}/structure/{_ss}/pca_variance.tsv",
+        f"{PATHS['outputs']}/structure/{_ss}/Pk.dist",
+        f"{PATHS['reports']}/figures/{_ss}/admixture_cv.png",
     ]
+    # Optional GIS-join target — present only if metadata.gis is configured.
+    if META.get("gis"):
+        FINAL_TARGETS += [
+            f"{PATHS['outputs']}/structure/{_ss}/admix_clusters_gis.tsv",
+        ]
 
-# Stage 3 figures (3b) — role-guarded.
-# Always:
-FINAL_TARGETS += [
-    f"{PATHS['reports']}/figures/admixture_bars.png",
-    f"{PATHS['reports']}/figures/admixture_bars.svg",
-    f"{PATHS['reports']}/figures/pca.png",
-    f"{PATHS['reports']}/figures/pca.svg",
-    f"{PATHS['reports']}/figures/njt.png",
-    f"{PATHS['reports']}/figures/njt.svg",
-]
-if ROLES.get("country"):
+# Stage 3 figures (3b) — role-guarded, one set per sample set.
+for _ss in SAMPLE_SETS:
     FINAL_TARGETS += [
-        f"{PATHS['reports']}/figures/admixture_bars_by_country.png",
-        f"{PATHS['reports']}/figures/admixture_bars_by_country.svg",
+        f"{PATHS['reports']}/figures/{_ss}/admixture_bars.png",
+        f"{PATHS['reports']}/figures/{_ss}/admixture_bars.svg",
+        f"{PATHS['reports']}/figures/{_ss}/pca.png",
+        f"{PATHS['reports']}/figures/{_ss}/pca.svg",
+        f"{PATHS['reports']}/figures/{_ss}/njt.png",
+        f"{PATHS['reports']}/figures/{_ss}/njt.svg",
     ]
-if ROLES.get("geography"):
-    FINAL_TARGETS += [
-        f"{PATHS['reports']}/figures/admixture_bars_by_geography.png",
-        f"{PATHS['reports']}/figures/admixture_bars_by_geography.svg",
-        f"{PATHS['reports']}/figures/pca_by_geography.png",
-        f"{PATHS['reports']}/figures/pca_by_geography.svg",
-    ]
-if META.get("gis") and ROLES.get("geography") and ROLES.get("country"):
-    FINAL_TARGETS += [
-        f"{PATHS['reports']}/figures/admix_map.png",
-        f"{PATHS['reports']}/figures/admix_map.svg",
-    ]
+    if ROLES.get("country"):
+        FINAL_TARGETS += [
+            f"{PATHS['reports']}/figures/{_ss}/admixture_bars_by_country.png",
+            f"{PATHS['reports']}/figures/{_ss}/admixture_bars_by_country.svg",
+        ]
+    if ROLES.get("geography"):
+        FINAL_TARGETS += [
+            f"{PATHS['reports']}/figures/{_ss}/admixture_bars_by_geography.png",
+            f"{PATHS['reports']}/figures/{_ss}/admixture_bars_by_geography.svg",
+            f"{PATHS['reports']}/figures/{_ss}/pca_by_geography.png",
+            f"{PATHS['reports']}/figures/{_ss}/pca_by_geography.svg",
+        ]
+    if META.get("gis") and ROLES.get("geography") and ROLES.get("country"):
+        FINAL_TARGETS += [
+            f"{PATHS['reports']}/figures/{_ss}/admix_map.png",
+            f"{PATHS['reports']}/figures/{_ss}/admix_map.svg",
+        ]
 
 # Stage 4 core targets. Per-cluster hmm_fract.txt files are expanded
 # from the assign_clusters checkpoint at DAG-resolution time — see
@@ -156,6 +224,14 @@ if config["ibd"].get("focal_cluster"):
         f"{PATHS['outputs']}/ibd/focal_{config['ibd']['focal_cluster']}_clones.tsv",
     ]
 
+# Clonality: the de-clonalized keep-list + its audit. Derived AFTER Stage 4
+# (clonality needs every sample) and never fed back into it.
+if DECLONALIZE:
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/clonality/unique_genotypes.txt",
+        f"{PATHS['outputs']}/clonality/declonalization_audit.tsv",
+    ]
+
 # Stage 4b figures. Connectivity is expanded via a checkpoint-aware input
 # function; the temporal plot needs the date role. Both role-guarded.
 if ROLES.get("geography"):
@@ -169,40 +245,42 @@ if ROLES.get("date"):
 # Stage 5 introgression. Per-pair calls are expanded from the assign_clusters
 # checkpoint (introgression_pair_targets in 05_introgression.smk); the headline
 # + its figure are wired only when introgression.focal_group is set.
-FINAL_TARGETS += [
-    introgression_pair_targets,
-    f"{PATHS['outputs']}/introgression/introgressed_windows_filtered.tsv",
-    f"{PATHS['outputs']}/introgression/filter_audit.tsv",
-    f"{PATHS['outputs']}/introgression/windows_by_cluster.tsv",
-    f"{PATHS['reports']}/figures/introgression_shoulder.png",
-    f"{PATHS['reports']}/figures/introgression_shoulder.svg",
-]
-if ROLES.get("geography"):
+FINAL_TARGETS += [introgression_pair_targets]
+for _ss in SAMPLE_SETS:
     FINAL_TARGETS += [
-        f"{PATHS['outputs']}/introgression/introgression_by_geography.tsv",
+        f"{PATHS['outputs']}/introgression/{_ss}/introgressed_windows_filtered.tsv",
+        f"{PATHS['outputs']}/introgression/{_ss}/filter_audit.tsv",
+        f"{PATHS['outputs']}/introgression/{_ss}/windows_by_cluster.tsv",
+        f"{PATHS['reports']}/figures/{_ss}/introgression_shoulder.png",
+        f"{PATHS['reports']}/figures/{_ss}/introgression_shoulder.svg",
     ]
-if INTRO_FOCAL:
-    FINAL_TARGETS += [
-        # The focal RESULT: per-window enrichment against a subgroup-scaled
-        # permutation null with its own BH/FDR (spec §9.6).
-        f"{PATHS['outputs']}/introgression/focal_{INTRO_FOCAL}_enriched_windows.tsv",
-        f"{PATHS['outputs']}/introgression/focal_{INTRO_FOCAL}_window_tests.tsv",
-        # Descriptive only — the "unique windows" set difference carries no
-        # significance test and is superseded by the two files above.
-        f"{PATHS['outputs']}/introgression/unique_windows_in_{INTRO_FOCAL}_with_freq_and_coords.tsv",
-        f"{PATHS['outputs']}/introgression/unique_windows_per_chrom_{INTRO_FOCAL}_vs_rest.tsv",
-        f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.png",
-        f"{PATHS['reports']}/figures/introgression_focal_{INTRO_FOCAL}.svg",
-    ]
+    if ROLES.get("geography"):
+        FINAL_TARGETS += [
+            f"{PATHS['outputs']}/introgression/{_ss}/introgression_by_geography.tsv",
+        ]
+    if INTRO_FOCAL:
+        FINAL_TARGETS += [
+            # The focal RESULT: per-window enrichment against a subgroup-scaled
+            # permutation null with its own BH/FDR (spec §9.6).
+            f"{PATHS['outputs']}/introgression/{_ss}/focal_{INTRO_FOCAL}_enriched_windows.tsv",
+            f"{PATHS['outputs']}/introgression/{_ss}/focal_{INTRO_FOCAL}_window_tests.tsv",
+            # Descriptive only — the "unique windows" set difference carries no
+            # significance test and is superseded by the two files above.
+            f"{PATHS['outputs']}/introgression/{_ss}/unique_windows_in_{INTRO_FOCAL}_with_freq_and_coords.tsv",
+            f"{PATHS['outputs']}/introgression/{_ss}/unique_windows_per_chrom_{INTRO_FOCAL}_vs_rest.tsv",
+            f"{PATHS['reports']}/figures/{_ss}/introgression_focal_{INTRO_FOCAL}.png",
+            f"{PATHS['reports']}/figures/{_ss}/introgression_focal_{INTRO_FOCAL}.svg",
+        ]
 
 # Stage 6 selection outputs — one per configured model.
-for _m in SELECTION_MODELS:
-    FINAL_TARGETS += [
-        f"{PATHS['outputs']}/selection/{_m}/candidate_regions_iHS.tsv",
-        f"{PATHS['outputs']}/selection/{_m}/ihs_summary.tsv",
-        f"{PATHS['outputs']}/selection/{_m}/ihs_scan.png",
-        f"{PATHS['outputs']}/selection/{_m}/ihs_pvalue.png",
-    ]
+for _ss in SAMPLE_SETS:
+    for _m in SELECTION_MODELS:
+        FINAL_TARGETS += [
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/candidate_regions_iHS.tsv",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_summary.tsv",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_scan.png",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_pvalue.png",
+        ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [
         f"{PATHS['outputs']}/qc/variant_count.txt",
@@ -213,18 +291,39 @@ if COHORT["input_type"] == "wgs":
     ]
 
 # Role-driven Stage 2 targets — added only when their role is configured.
+# The per-sample Fws/MOI computation is NOT sample-set dependent and is not
+# repeated — only the BY-GROUP counts get a de-clonalized variant.
 if ROLES.get("country"):
     FINAL_TARGETS += [
-        f"{PATHS['outputs']}/moi/fws_by_country.tsv",
         f"{PATHS['reports']}/figures/fws_density_by_country.png",
         f"{PATHS['reports']}/figures/fws_density_by_country.svg",
     ]
 if ROLES.get("geography"):
     FINAL_TARGETS += [
-        f"{PATHS['outputs']}/moi/fws_by_geography.tsv",
         f"{PATHS['reports']}/figures/fws_density_by_geography.png",
         f"{PATHS['reports']}/figures/fws_density_by_geography.svg",
     ]
+for _ss in SAMPLE_SETS:
+    if ROLES.get("country"):
+        FINAL_TARGETS += [f"{PATHS['outputs']}/moi/{_ss}/fws_by_country.tsv"]
+    if ROLES.get("geography"):
+        FINAL_TARGETS += [f"{PATHS['outputs']}/moi/{_ss}/fws_by_geography.tsv"]
+
+# Full-vs-unique comparison tables — the artifact that makes the effect of
+# clonality on each stage legible at a glance. Only meaningful when both arms
+# exist (docs/clonality.md).
+if DECLONALIZE:
+    FINAL_TARGETS += [
+        f"{PATHS['outputs']}/structure/declonalization_comparison.tsv",
+        f"{PATHS['outputs']}/introgression/declonalization_comparison.tsv",
+        f"{PATHS['outputs']}/moi/declonalization_comparison.tsv",
+        f"{PATHS['reports']}/figures/declonalization_comparison.png",
+        f"{PATHS['reports']}/figures/declonalization_comparison.svg",
+    ]
+    if SELECTION_MODELS:
+        FINAL_TARGETS += [
+            f"{PATHS['outputs']}/selection/declonalization_comparison.tsv",
+        ]
 
 rule all:
     input:

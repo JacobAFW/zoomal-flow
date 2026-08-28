@@ -18,7 +18,7 @@ def _connectivity_clusters(wildcards):
     """
     if FOCAL_CLUSTER:
         return [FOCAL_CLUSTER]
-    admix_tsv = checkpoints.assign_clusters.get(**wildcards).output.tsv
+    admix_tsv = checkpoints.assign_clusters.get(sampleset="full").output.tsv
     return _ibd_clusters(admix_tsv)
 
 

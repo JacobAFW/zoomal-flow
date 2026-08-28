@@ -173,6 +173,23 @@ properties:
           (mirrors V1's Pen_clones_IBD.txt schema). null = combined table
           only.
 
+  clonality:
+    type: object
+    additionalProperties: true
+    description: |
+      Clonality handling. Clonal samples are near-identical genotypes;
+      counting each as independent evidence biases every frequency- or
+      count-based result. See docs/clonality.md.
+    properties:
+      declonalize:
+        type: boolean
+        description: >
+          true (default) = build every frequency stage twice, on the full
+          sample set and on one representative per clonal group, plus a
+          full-vs-unique comparison table per stage. false = build only the
+          full set. Never affects Stage 4 or the full-set cluster definitions,
+          which stay the operational backbone in both cases.
+
   introgression:
     type: object
     additionalProperties: true

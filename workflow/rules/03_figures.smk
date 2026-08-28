@@ -30,18 +30,18 @@ rule plot_admixture_bars:
     """
     input:
         bk       = rules.select_best_k.output.txt,
-        fam      = f"{PATHS['outputs']}/structure/cleaned.fam",
+        fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
         clusters = rules.assign_clusters.output.tsv,
     output:
-        png = f"{PATHS['reports']}/figures/admixture_bars.png",
-        svg = f"{PATHS['reports']}/figures/admixture_bars.svg",
+        png = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars.png",
+        svg = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars.svg",
     log:
-        f"{PATHS['logs']}/structure/plot_admixture_bars.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/plot_admixture_bars.log",
     params:
-        admix_dir = f"{PATHS['outputs']}/structure/admixture",
+        admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
         script    = str(_AGNOSTIC / "scripts" / "R" / "plot_admixture_bars.R"),
     message:
-        "[structure:figures] ADMIXTURE bars (single panel)"
+        "[structure:figures:{wildcards.sampleset}] ADMIXTURE bars (single panel)"
     shell:
         r"""
         K=$(cat {input.bk})
@@ -72,19 +72,19 @@ if HAS_COUNTRY_FIG:
         """
         input:
             bk       = rules.select_best_k.output.txt,
-            fam      = f"{PATHS['outputs']}/structure/cleaned.fam",
+            fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
             clusters = rules.assign_clusters.output.tsv,
             metadata = rules.validate_metadata.output.tsv,
         output:
-            png = f"{PATHS['reports']}/figures/admixture_bars_by_country.png",
-            svg = f"{PATHS['reports']}/figures/admixture_bars_by_country.svg",
+            png = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars_by_country.png",
+            svg = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars_by_country.svg",
         log:
-            f"{PATHS['logs']}/structure/plot_admixture_bars_by_country.log",
+            f"{PATHS['logs']}/structure/{{sampleset}}/plot_admixture_bars_by_country.log",
         params:
-            admix_dir = f"{PATHS['outputs']}/structure/admixture",
+            admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
             script    = str(_AGNOSTIC / "scripts" / "R" / "plot_admixture_bars_by_role.R"),
         message:
-            "[structure:figures] ADMIXTURE bars faceted by country"
+            "[structure:figures:{wildcards.sampleset}] ADMIXTURE bars faceted by country"
         shell:
             r"""
             K=$(cat {input.bk})
@@ -116,19 +116,19 @@ if HAS_GEOGRAPHY_FIG:
         """
         input:
             bk       = rules.select_best_k.output.txt,
-            fam      = f"{PATHS['outputs']}/structure/cleaned.fam",
+            fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.fam",
             clusters = rules.assign_clusters.output.tsv,
             metadata = rules.validate_metadata.output.tsv,
         output:
-            png = f"{PATHS['reports']}/figures/admixture_bars_by_geography.png",
-            svg = f"{PATHS['reports']}/figures/admixture_bars_by_geography.svg",
+            png = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars_by_geography.png",
+            svg = f"{PATHS['reports']}/figures/{{sampleset}}/admixture_bars_by_geography.svg",
         log:
-            f"{PATHS['logs']}/structure/plot_admixture_bars_by_geography.log",
+            f"{PATHS['logs']}/structure/{{sampleset}}/plot_admixture_bars_by_geography.log",
         params:
-            admix_dir = f"{PATHS['outputs']}/structure/admixture",
+            admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
             script    = str(_AGNOSTIC / "scripts" / "R" / "plot_admixture_bars_by_role.R"),
         message:
-            "[structure:figures] ADMIXTURE bars faceted by geography"
+            "[structure:figures:{wildcards.sampleset}] ADMIXTURE bars faceted by geography"
         shell:
             r"""
             K=$(cat {input.bk})
@@ -162,14 +162,14 @@ rule plot_pca:
         varpct   = rules.pca_variance.output.tsv,
         clusters = rules.assign_clusters.output.tsv,
     output:
-        png = f"{PATHS['reports']}/figures/pca.png",
-        svg = f"{PATHS['reports']}/figures/pca.svg",
+        png = f"{PATHS['reports']}/figures/{{sampleset}}/pca.png",
+        svg = f"{PATHS['reports']}/figures/{{sampleset}}/pca.svg",
     log:
-        f"{PATHS['logs']}/structure/plot_pca.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/plot_pca.log",
     params:
         script = str(_AGNOSTIC / "scripts" / "R" / "plot_pca.R"),
     message:
-        "[structure:figures] PCA scatter (by cluster)"
+        "[structure:figures:{wildcards.sampleset}] PCA scatter (by cluster)"
     shell:
         r"""
         mkdir -p $(dirname {output.png})
@@ -198,14 +198,14 @@ if HAS_GEOGRAPHY_FIG:
             varpct   = rules.pca_variance.output.tsv,
             metadata = rules.validate_metadata.output.tsv,
         output:
-            png = f"{PATHS['reports']}/figures/pca_by_geography.png",
-            svg = f"{PATHS['reports']}/figures/pca_by_geography.svg",
+            png = f"{PATHS['reports']}/figures/{{sampleset}}/pca_by_geography.png",
+            svg = f"{PATHS['reports']}/figures/{{sampleset}}/pca_by_geography.svg",
         log:
-            f"{PATHS['logs']}/structure/plot_pca_by_geography.log",
+            f"{PATHS['logs']}/structure/{{sampleset}}/plot_pca_by_geography.log",
         params:
             script = str(_AGNOSTIC / "scripts" / "R" / "plot_pca_by_geography.R"),
         message:
-            "[structure:figures] PCA scatter (by geography)"
+            "[structure:figures:{wildcards.sampleset}] PCA scatter (by geography)"
         shell:
             r"""
             mkdir -p $(dirname {output.png})
@@ -234,14 +234,14 @@ rule plot_nj_tree:
         dist_id = rules.distance_matrix.output.dist_id,
         clusters= rules.assign_clusters.output.tsv,
     output:
-        png = f"{PATHS['reports']}/figures/njt.png",
-        svg = f"{PATHS['reports']}/figures/njt.svg",
+        png = f"{PATHS['reports']}/figures/{{sampleset}}/njt.png",
+        svg = f"{PATHS['reports']}/figures/{{sampleset}}/njt.svg",
     log:
-        f"{PATHS['logs']}/structure/plot_nj_tree.log",
+        f"{PATHS['logs']}/structure/{{sampleset}}/plot_nj_tree.log",
     params:
         script = str(_AGNOSTIC / "scripts" / "R" / "plot_nj_tree.R"),
     message:
-        "[structure:figures] Neighbour-Joining tree"
+        "[structure:figures:{wildcards.sampleset}] Neighbour-Joining tree"
     shell:
         r"""
         mkdir -p $(dirname {output.png})
@@ -273,14 +273,14 @@ if HAS_GIS_FIG:
         input:
             gis = rules.gis_join.output.tsv,
         output:
-            png = f"{PATHS['reports']}/figures/admix_map.png",
-            svg = f"{PATHS['reports']}/figures/admix_map.svg",
+            png = f"{PATHS['reports']}/figures/{{sampleset}}/admix_map.png",
+            svg = f"{PATHS['reports']}/figures/{{sampleset}}/admix_map.svg",
         log:
-            f"{PATHS['logs']}/structure/plot_province_map.log",
+            f"{PATHS['logs']}/structure/{{sampleset}}/plot_province_map.log",
         params:
             script = str(_AGNOSTIC / "scripts" / "R" / "plot_province_map.R"),
         message:
-            "[structure:figures] Province choropleth + sample points"
+            "[structure:figures:{wildcards.sampleset}] Province choropleth + sample points"
         shell:
             r"""
             mkdir -p $(dirname {output.png})

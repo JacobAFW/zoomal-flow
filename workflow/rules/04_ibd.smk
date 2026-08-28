@@ -69,7 +69,7 @@ def ibd_cluster_targets(wildcards):
     cluster list read from the checkpoint. `all` / FINAL_TARGETS consume
     this.
     """
-    admix_tsv = checkpoints.assign_clusters.get(**wildcards).output.tsv
+    admix_tsv = checkpoints.assign_clusters.get(sampleset="full").output.tsv
     clusters  = _ibd_clusters(admix_tsv)
     return expand(
         f"{PATHS['outputs']}/ibd/{{cluster}}/{{cluster}}.hmm_fract.txt",
@@ -82,7 +82,7 @@ def ibd_fract_specs(wildcards):
     Return the list of `<fract_path>:<cluster>` arg specs the clonal_clusters
     R script expects (one per included cluster).
     """
-    admix_tsv = checkpoints.assign_clusters.get(**wildcards).output.tsv
+    admix_tsv = checkpoints.assign_clusters.get(sampleset="full").output.tsv
     clusters  = _ibd_clusters(admix_tsv)
     return [
         f"{PATHS['outputs']}/ibd/{c}/{c}.hmm_fract.txt:{c}" for c in clusters
@@ -91,7 +91,7 @@ def ibd_fract_specs(wildcards):
 
 def ibd_fract_files(wildcards):
     """Just the file paths (for the `input:` block)."""
-    admix_tsv = checkpoints.assign_clusters.get(**wildcards).output.tsv
+    admix_tsv = checkpoints.assign_clusters.get(sampleset="full").output.tsv
     clusters  = _ibd_clusters(admix_tsv)
     return [f"{PATHS['outputs']}/ibd/{c}/{c}.hmm_fract.txt" for c in clusters]
 
@@ -115,7 +115,7 @@ rule cluster_membership:
             format matching plink --keep expectations.
     """
     input:
-        clusters = f"{PATHS['outputs']}/structure/admix_clusters.tsv",
+        clusters = f"{PATHS['outputs']}/structure/full/admix_clusters.tsv",
     output:
         keep = f"{PATHS['outputs']}/ibd/{{cluster}}/keep.txt",
     log:
@@ -146,9 +146,9 @@ rule cluster_maf_filter:
             variant set; usually shrinks hmmIBD input by ~30-40%.
     """
     input:
-        bed  = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim  = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam  = f"{PATHS['outputs']}/structure/cleaned.fam",
+        bed  = f"{PATHS['outputs']}/structure/full/cleaned.bed",
+        bim  = f"{PATHS['outputs']}/structure/full/cleaned.bim",
+        fam  = f"{PATHS['outputs']}/structure/full/cleaned.fam",
         keep = rules.cluster_membership.output.keep,
     output:
         bed = f"{PATHS['outputs']}/ibd/{{cluster}}/cleaned.bed",
@@ -158,7 +158,7 @@ rule cluster_maf_filter:
     log:
         f"{PATHS['logs']}/ibd/cluster_maf_filter_{{cluster}}.log",
     params:
-        in_prefix  = f"{PATHS['outputs']}/structure/cleaned",
+        in_prefix  = f"{PATHS['outputs']}/structure/full/cleaned",
         out_prefix = f"{PATHS['outputs']}/ibd/{{cluster}}/cleaned",
         cluster_maf= IBD["cluster_min_maf"],
     threads: config["compute"]["threads_heavy"]
@@ -265,15 +265,15 @@ rule combined_vcf:
             combined VCF header.
     """
     input:
-        bed = f"{PATHS['outputs']}/structure/cleaned.bed",
-        bim = f"{PATHS['outputs']}/structure/cleaned.bim",
-        fam = f"{PATHS['outputs']}/structure/cleaned.fam",
+        bed = f"{PATHS['outputs']}/structure/full/cleaned.bed",
+        bim = f"{PATHS['outputs']}/structure/full/cleaned.bim",
+        fam = f"{PATHS['outputs']}/structure/full/cleaned.fam",
     output:
         vcf = f"{PATHS['outputs']}/ibd/combined/cleaned.vcf.gz",
     log:
         f"{PATHS['logs']}/ibd/combined_vcf.log",
     params:
-        in_prefix  = f"{PATHS['outputs']}/structure/cleaned",
+        in_prefix  = f"{PATHS['outputs']}/structure/full/cleaned",
         out_prefix = f"{PATHS['outputs']}/ibd/combined/cleaned",
     threads: config["compute"]["threads_heavy"]
     message:

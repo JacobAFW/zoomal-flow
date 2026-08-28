@@ -1,0 +1,5 @@
+sample_id	clonal_source	role
+sampB_20	sampB_20	source
+clonB_1	sampB_20	replicate
+clonB_2	sampB_20	replicate
+clonB_3	sampB_20	replicate
