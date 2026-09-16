@@ -232,6 +232,26 @@ echo "    $(wc -l < "$OUT_MASK" | tr -d ' ') mask regions"
 # 7. Provenance table — the accession list, with the cluster it came from.
 #---------------------------------------------------------------------------
 {
+  cat <<'PROV'
+# ZOOMAL-Flow public example — sample provenance.
+#
+# A public subset derived from the dataset published in:
+#   Westaway JAF, Diez Benavente E, Auburn S, Kucharski M, Aranciaga N, Nayak S,
+#   William T, Rajahram GS, Piera KA, Braima K, Tan AF, Alaza DA, Barber BE,
+#   Drakeley C, Amato R, Sutanto E, Trimarsanto H, Jelip J, Anstey NM,
+#   Bozdech Z, Field M, Grigg MJ. "Genomic epidemiology of Plasmodium knowlesi
+#   reveals putative genetic drivers of adaptation in Malaysia."
+#   PLOS Neglected Tropical Diseases 19(3): e0012885 (2025).
+#   doi:10.1371/journal.pntd.0012885
+#
+# Cite that paper if you use this example. It references the original public
+# ENA studies these archived accessions came from.
+#
+# Every sample below is a publicly archived ENA accession; none are embargoed.
+# `source_cluster` is the cluster the sample occupies in the full cohort, and
+# is recorded for provenance only — the example derives its own clusters with
+# ADMIXTURE and does not read this column.
+PROV
   printf 'accession\tsource_cluster\tf_miss_full_cohort\tcountry\tgeography\thost\n'
   awk -F'\t' '
     NR==FNR { if (FNR>1) { country[$1]=$2; geo[$1]=$3; host[$1]=$6 } next }

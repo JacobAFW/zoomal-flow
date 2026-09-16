@@ -365,20 +365,37 @@ rule final_filters:
 
 rule ld_prune:
     """
-    LD-prune the cleaned bfile before ADMIXTURE.
+    LD-prune the cleaned bfile before ADMIXTURE — unless the cohort is too
+    small for an LD estimate to mean anything.
 
     WHAT: plink2 --indep-pairwise 50 5 0.5 → plink --extract --make-bed
           (plink 1.9 for the extract step; plink2 alpha segfaults on this
           combination, both produce identical bfiles).
+          Below structure.min_samples_for_ld_prune samples, the prune is
+          SKIPPED and the unpruned bfile is passed straight through.
     WHY:  ADMIXTURE docs recommend unlinked SNPs. Without pruning, K=5
           alone took >3 h on a single core in V1; pruning takes it to
           ~minutes total. The standard 50/5/0.5 window typically retains
           5-10% of variants with full population-structure signal.
-    TUNABLES: (none in the rule; window params hardcoded to PLINK defaults)
-    OUTPUT: {outputs}/structure/cleaned.ld.{bed,bim,fam}
-            + {outputs}/structure/cleaned.prune.in (kept-variant list)
+
+          The small-cohort branch exists because PLINK2 refuses outright
+          below 50 samples ("there are less than 50 samples to estimate
+          from"), and it is right to: an LD estimate from 20 haplotypes is
+          mostly noise, and pruning on it would drop variants essentially at
+          random. Before this branch existed the pipeline simply crashed
+          here on any cohort under 50 — which is not acceptable for a tool
+          that claims to run on any cohort. Degrading with a loud warning
+          matches how the rest of the pipeline handles a missing input
+          (skip + logged note, never a crash).
+    TUNABLES: structure.min_samples_for_ld_prune (default 50 = PLINK2's own
+          floor). Window params stay hardcoded to PLINK defaults.
+    OUTPUT: {outputs}/structure/{sampleset}/cleaned.ld.{bed,bim,fam}
+            + cleaned.prune.in (kept-variant list; every variant when skipped)
+            + ld_prune_status.txt ("pruned" or "SKIPPED" + the reason)
     TRY:    after pruning, check `wc -l cleaned.prune.in` vs cleaned.bim —
             ~5-10% kept is typical for an outbred eukaryote at this scale.
+            Read ld_prune_status.txt first: if it says SKIPPED, the counts
+            will be equal because nothing was pruned.
     """
     input:
         bed = rules.final_filters.output.bed,
@@ -389,25 +406,72 @@ rule ld_prune:
         bed      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bed",
         bim      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bim",
         fam      = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.fam",
+        status   = f"{PATHS['outputs']}/structure/{{sampleset}}/ld_prune_status.txt",
     log:
         f"{PATHS['logs']}/structure/{{sampleset}}/ld_prune.log",
     params:
         in_prefix  = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned",
         out_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld",
+        min_n      = MIN_N_LD_PRUNE,
     threads: config["compute"]["threads_heavy"]
     message:
         "[structure:wgs:{wildcards.sampleset}] LD-pruning before ADMIXTURE"
     shell:
         r"""
-        plink2 --bfile {params.in_prefix} \
-            --allow-extra-chr \
-            --indep-pairwise 50 5 0.5 \
-            --threads {threads} \
-            --out {params.in_prefix} > {log} 2>&1
-        plink --bfile {params.in_prefix} \
-            --allow-extra-chr \
-            --extract {output.prune_in} \
-            --make-bed --threads {threads} \
-            --out {params.out_prefix} >> {log} 2>&1
-        echo "Pruned variants kept: $(wc -l < {output.prune_in})" >> {log}
+        set -euo pipefail
+        n_samples=$(wc -l < {params.in_prefix}.fam | tr -d ' ')
+
+        if [ "$n_samples" -ge {params.min_n} ]; then
+            plink2 --bfile {params.in_prefix} \
+                --allow-extra-chr \
+                --indep-pairwise 50 5 0.5 \
+                --threads {threads} \
+                --out {params.in_prefix} > {log} 2>&1
+            plink --bfile {params.in_prefix} \
+                --allow-extra-chr \
+                --extract {output.prune_in} \
+                --make-bed --threads {threads} \
+                --out {params.out_prefix} >> {log} 2>&1
+            echo "Pruned variants kept: $(wc -l < {output.prune_in})" >> {log}
+            printf 'pruned\tn_samples=%s\tthreshold=%s\n' \
+                "$n_samples" "{params.min_n}" > {output.status}
+        else
+            # Small-cohort branch. PLINK2 will not estimate LD from fewer than
+            # 50 samples, and an estimate from that few haplotypes would be
+            # noise anyway, so pass the unpruned bfile through unchanged rather
+            # than prune on a number nobody should trust.
+            {{
+              echo "=============================================================="
+              echo "WARNING: LD-PRUNING SKIPPED — SMALL COHORT"
+              echo "=============================================================="
+              echo "  samples in this sample set : $n_samples"
+              echo "  threshold                  : {params.min_n}"
+              echo "    (structure.min_samples_for_ld_prune)"
+              echo
+              echo "  PLINK2 refuses --indep-pairwise below 50 samples, and an LD"
+              echo "  estimate from this few haplotypes would be mostly noise:"
+              echo "  pruning on it would drop variants close to at random."
+              echo
+              echo "  ADMIXTURE, the PCA and the NJ tree will therefore run on the"
+              echo "  UNPRUNED variant set. Linked variants are correlated"
+              echo "  evidence, so they can inflate apparent structure: a cluster"
+              echo "  may be driven by one long haplotype rather than by"
+              echo "  genome-wide ancestry. INTERPRET THE STRUCTURE RESULTS WITH"
+              echo "  CARE, and treat K selection as indicative."
+              echo
+              echo "  This is a small-cohort compromise so the pipeline completes,"
+              echo "  not a silent equivalence to pruning."
+              echo "=============================================================="
+            }} | tee {log} >&2
+
+            cp {params.in_prefix}.bed {output.bed}
+            cp {params.in_prefix}.bim {output.bim}
+            cp {params.in_prefix}.fam {output.fam}
+            # Keep the output contract: prune.in is "the variants carried
+            # forward", which here is all of them.
+            cut -f2 {params.in_prefix}.bim > {output.prune_in}
+            echo "Unpruned variants carried forward: $(wc -l < {output.prune_in})" >> {log}
+            printf 'SKIPPED\tn_samples=%s\tthreshold=%s\treason=cohort_below_ld_prune_threshold\n' \
+                "$n_samples" "{params.min_n}" > {output.status}
+        fi
         """

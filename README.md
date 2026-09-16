@@ -265,6 +265,61 @@ evidence for making it.
 
 ---
 
+## Small cohorts — what works, and what does not yet
+
+The pipeline is built to run on any cohort, but two of its tools have a hard
+**50-sample floor** because below that they cannot estimate what they need to.
+One of those is handled; the other is not yet.
+
+**Handled — LD-pruning (Stage 3).** PLINK2 refuses `--indep-pairwise` below 50
+samples. Below `structure.min_samples_for_ld_prune` (default 50, PLINK2's own
+floor) the pipeline now **skips the prune**, passes the unpruned variant set to
+ADMIXTURE, and says so loudly: a banner in
+`logs/structure/{sampleset}/ld_prune.log`, a machine-readable
+`outputs/structure/{sampleset}/ld_prune_status.txt`, and a warning callout in
+the report. Read those before quoting the structure results — linked variants
+are correlated evidence, so they can inflate apparent structure, and K
+selection in particular should be treated as indicative.
+
+**Not handled — PCA (Stage 3).** PLINK2 `--pca` needs allele frequencies and
+refuses to impute them from fewer than 50 samples:
+
+```
+Error: This run requires decent allele frequencies, but they aren't being
+loaded with --read-freq, and less than 50 samples are available to impute them
+from.
+```
+
+A 30-sample cohort therefore gets through QC, MOI, LD-prune-skip, ADMIXTURE
+(K correctly recovered), IBD, clonality and introgression — 81 of 92 steps —
+and then stops at `pca`, taking the PCA figures and everything downstream of
+them with it. The remedy PLINK2 itself suggests is `--freq` followed by
+`--read-freq`, which is a small change, but it means computing frequencies
+from the same small sample PLINK2 is warning you about. That is a judgement
+call about what the PCA then means, so it is left open rather than decided
+here.
+
+**In short:** under ~50 samples, expect structure (ADMIXTURE), IBD, clonality
+and introgression to work with a documented caveat, and PCA to stop the run.
+
+
+## Known upstream limitation: hmmIBD and long output paths
+
+hmmIBD builds its output filenames in a fixed-size buffer without bounds
+checking. Give it a long `-o` prefix and it dies with **SIGTRAP (exit 133,
+"Trace/BPT trap: 5") and an empty log** — no error message, nothing to go on.
+
+Measured on `hmmibd 2.1.3` (bioconda, osx-arm64): a 46-character prefix works,
+56 fails. The pipeline stays under that by using workspace-relative output
+paths, which is why the shipped configs are fine. You can trip it by pointing
+`paths.outputs` at a deep absolute directory, or by running the pipeline from
+one.
+
+**If Stage 4 dies with exit 133 and an empty `logs/ibd/run_hmmibd_*.log`, this
+is why.** Shorten the output path — run from a shallower working directory, or
+set `paths.outputs` to something shorter — and it will work unchanged.
+
+
 ## The report
 
 One HTML document that assembles whatever the pipeline actually produced:

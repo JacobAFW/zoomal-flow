@@ -375,6 +375,31 @@ if (!length(CLUSTERS)) {
      "should broadly agree; where they disagree, understand why before going further.")
   md("Clusters recovered in this run: ", paste0("`", CLUSTERS, "`", collapse = ", "),
      " (labelling mode `", CFG$structure$cluster_labelling %||% "—", "`).")
+
+  # Was LD-pruning actually applied? On a small cohort it is skipped, and that
+  # materially changes how much weight the structure results carry — so say so
+  # here rather than leaving it in a log nobody opens.
+  for (a in ARMS) {
+    st <- out("structure", a, "ld_prune_status.txt")
+    if (!have(st)) next
+    line <- readLines(st, warn = FALSE)[1]
+    if (!grepl("^SKIPPED", line)) next
+    n_s <- sub(".*n_samples=([0-9]+).*", "\\1", line)
+    thr <- sub(".*threshold=([0-9]+).*", "\\1", line)
+    md("::: {.callout-warning}")
+    md("## LD-pruning was skipped for the `", a, "` arm")
+    md("This sample set has **", n_s, " samples**, below ",
+       "`structure.min_samples_for_ld_prune` (", thr, "). PLINK2 will not ",
+       "estimate linkage disequilibrium from fewer than 50 samples, and an ",
+       "estimate from that few haplotypes would be mostly noise, so the ",
+       "ADMIXTURE / PCA / tree results below were computed on the **unpruned** ",
+       "variant set.")
+    md("Linked variants are correlated evidence, so they can inflate apparent ",
+       "structure: a cluster may be driven by one long haplotype rather than by ",
+       "genome-wide ancestry. Treat the structure results — and the K selection ",
+       "in particular — as indicative rather than settled.")
+    md(":::")
+  }
 }
 ```
 

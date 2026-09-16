@@ -184,6 +184,8 @@ FINAL_TARGETS = [
 for _ss in SAMPLE_SETS:
     FINAL_TARGETS += [
         f"{PATHS['outputs']}/structure/{_ss}/cleaned.fam",
+        # Records whether LD-pruning ran or was skipped for a small cohort.
+        f"{PATHS['outputs']}/structure/{_ss}/ld_prune_status.txt",
         f"{PATHS['outputs']}/structure/{_ss}/admixture/cv_error.tsv",
         f"{PATHS['outputs']}/structure/{_ss}/best_k.txt",
         f"{PATHS['outputs']}/structure/{_ss}/admix_clusters.tsv",

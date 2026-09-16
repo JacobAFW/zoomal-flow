@@ -4,6 +4,10 @@
 #   Both structure_prep_wgs.smk and structure_prep_microhap.smk MUST emit
 #     {outputs}/structure/cleaned.{bed,bim,fam}    (final filtered set)
 #     {outputs}/structure/cleaned.ld.{bed,bim,fam} (LD-pruned, for ADMIXTURE)
+#     {outputs}/structure/ld_prune_status.txt      ("pruned" or "SKIPPED")
+#   The .ld set is the ADMIXTURE input whether or not pruning actually ran:
+#   below structure.min_samples_for_ld_prune it is the unpruned set copied
+#   through, and the status file is how a reader tells which happened.
 #   Everything below in this file (ADMIXTURE, PCA, NJ-tree distance,
 #   assign_clusters, optional gis_join) reads those and does NOT branch on
 #   input_type — the fork is contained in the prep seam.
@@ -26,6 +30,27 @@ STRUCTURE     = config["structure"]
 K_RANGE       = list(range(STRUCTURE["admixture_k_min"],
                            STRUCTURE["admixture_k_max"] + 1))
 CV_FOLDS      = STRUCTURE["admixture_cv_folds"]
+# Fixed ADMIXTURE seed. Without one, ADMIXTURE seeds itself and its
+# cross-validation error moves between runs on identical input — three
+# consecutive K=3 runs gave 1.13692 / 1.13653 / 1.13834 — which makes the
+# automatic best-K pick non-deterministic. With a seed the whole sweep
+# reproduces exactly, including under -j threading.
+ADMIX_SEED    = STRUCTURE.get("admixture_seed", 20260916)
+# Threads per ADMIXTURE process. Default 1, deliberately. A fixed seed alone is
+# NOT enough: ADMIXTURE's threaded cross-validation accumulates over folds in
+# thread-completion order, so with -j > 1 the CV error still moves between runs
+# once the machine is busy (measured 1.13756 / 1.13798 / 1.13781 at one seed,
+# with a second ADMIXTURE running alongside — exactly what the K sweep does).
+# CV error picks best K, so that non-determinism reaches the cluster labels.
+# At -j1 the same input gives the same CV error every time; the cost here was
+# 0.64 s vs 0.40 s, and the sweep is still parallel ACROSS K values.
+ADMIX_THREADS = int(STRUCTURE.get("admixture_threads", 1))
+# Cohort size at or above which Stage 3 LD-prunes. PLINK2 refuses
+# --indep-pairwise below 50 samples, so without this the pipeline simply
+# crashed at ld_prune on any smaller cohort. Below the threshold the prune is
+# skipped and the unpruned bfile goes to ADMIXTURE, loudly (see ld_prune in
+# structure_prep_wgs.smk and ld_prune_status.txt in the stage outputs).
+MIN_N_LD_PRUNE = int(STRUCTURE.get("min_samples_for_ld_prune", 50))
 LABEL_MODE    = STRUCTURE["cluster_labelling"]
 K_OVERRIDE    = STRUCTURE.get("admixture_k")
 DUP_PATTERN   = STRUCTURE.get("duplicate_id_pattern")    # may be None
@@ -56,11 +81,12 @@ rule admixture_run:
     the LD-pruned bfile from the prep seam. K values run in parallel via
     Snakemake's wildcard expansion.
 
-    WHAT: admixture --cv N cleaned.bed K  (staged in a per-stage dir so .Q
-          and .P land under outputs/structure/admixture/)
+    WHAT: admixture --cv N --seed S cleaned.bed K  (staged in a per-stage dir
+          so .Q and .P land under outputs/structure/admixture/)
     WHY:  ADMIXTURE is the slide-7 ancestry-bar method. CV error vs K is
           the standard model-selection diagnostic.
-    TUNABLES: structure.admixture_k_min/max, structure.admixture_cv_folds
+    TUNABLES: structure.admixture_k_min/max, structure.admixture_cv_folds,
+          structure.admixture_seed, structure.admixture_threads
     OUTPUT: {outputs}/structure/admixture/cleaned.{K}.{Q,P}
             + {logs}/structure/admixture_K{K}.log
     TRY:    bump admixture_k_max to 12 to scan further if the CV-vs-K curve
@@ -74,11 +100,12 @@ rule admixture_run:
         Q   = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cleaned.{{K}}.Q",
         P   = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture/cleaned.{{K}}.P",
         log = f"{PATHS['logs']}/structure/{{sampleset}}/admixture_K{{K}}.log",
-    threads: 2
+    threads: ADMIX_THREADS
     params:
         admix_dir = f"{PATHS['outputs']}/structure/{{sampleset}}/admixture",
         ld_prefix = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld",
         cv_folds  = CV_FOLDS,
+        seed      = ADMIX_SEED,
     message:
         "[structure:{wildcards.sampleset}] ADMIXTURE K={wildcards.K}"
     shell:
@@ -88,7 +115,8 @@ rule admixture_run:
             cp -f {params.ld_prefix}.$ext {params.admix_dir}/cleaned.$ext
         done
         ( cd {params.admix_dir} && \
-          admixture --cv={params.cv_folds} -j{threads} cleaned.bed {wildcards.K} ) \
+          admixture --cv={params.cv_folds} --seed={params.seed} \
+                    -j{threads} cleaned.bed {wildcards.K} ) \
             > {output.log} 2>&1
         """
 

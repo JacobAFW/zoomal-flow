@@ -129,6 +129,37 @@ properties:
       admixture_k_min:     { type: integer, minimum: 1 }
       admixture_k_max:     { type: integer, minimum: 1 }
       admixture_cv_folds:  { type: integer, minimum: 2 }
+      admixture_seed:
+        type: integer
+        description: |
+          Fixed random seed for ADMIXTURE (--seed). Without it ADMIXTURE seeds
+          itself and its cross-validation error varies run to run, which makes
+          auto best-K selection non-deterministic: three consecutive K=3 runs
+          on identical input gave 1.13692 / 1.13653 / 1.13834. Set, the same
+          run reproduces exactly, including under -j threading.
+      admixture_threads:
+        type: integer
+        minimum: 1
+        description: |
+          Threads per ADMIXTURE process (-j). Default 1, and that default is
+          deliberate: ADMIXTURE's threaded cross-validation sums over folds in
+          whatever order the threads finish, so with -j > 1 the CV error is NOT
+          reproducible even with a fixed seed once the machine is under load
+          (observed 1.13756 / 1.13798 / 1.13781 on identical input at the same
+          seed). Since CV error picks best K, that makes the K non-deterministic.
+          Raise it only if ADMIXTURE dominates your runtime AND you pin
+          structure.admixture_k rather than relying on the CV pick. Note that
+          the K sweep is already parallel ACROSS K values as separate jobs;
+          this knob only controls threading WITHIN one.
+      min_samples_for_ld_prune:
+        type: integer
+        minimum: 0
+        description: |
+          Cohort size at or above which Stage 3 LD-prunes before ADMIXTURE.
+          PLINK2 refuses --indep-pairwise below 50 samples ("less than 50
+          samples to estimate from"), so below this threshold the prune step
+          is SKIPPED and the unpruned cleaned bfile is used instead, with a
+          warning. Default 50 = PLINK2's own floor.
       admixture_k:
         type: [integer, "null"]
         description: Override best-K. null = auto-pick from the CV minimum.

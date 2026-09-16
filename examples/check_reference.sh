@@ -21,12 +21,17 @@ if [[ ! -f "$REF" ]]; then
 ERROR: no reference at $REF
 
 Download the P. knowlesi A1-H.1 genome FASTA from PlasmoDB:
-  https://plasmodb.org/plasmo/app/downloads/
-  → release-NN → PknowlesiA1H1 → fasta/data/
-  → PlasmoDB-NN_PknowlesiA1H1_Genome.fasta
 
-Any release works: the A1-H.1 assembly has not changed (the FASTA headers
-record version=2017-09-19), so the contigs below are the same in every one.
+  https://plasmodb.org   (free account required; you must be logged in)
+
+  → search Plasmodium knowlesi strain A1-H.1
+  → Download → Genome → PlasmoDB-<release>_PknowlesiA1H1_Genome.fasta
+
+This example was built against release 67. A later release is fine too: the
+A1-H.1 assembly has not changed (its FASTA headers record
+version=2017-09-19), so the contigs are identical — re-run this script after
+downloading and it will confirm.
+
 Save it to $REF — or pass your path as an argument and point
 examples/config.yaml's reference.fasta at it.
 EOF

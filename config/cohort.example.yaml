@@ -61,6 +61,21 @@ structure:
   admixture_k_min: 2
   admixture_k_max: 10
   admixture_cv_folds: 5               # matches V1's --cv default
+  # Fixed ADMIXTURE seed. Without it ADMIXTURE seeds itself and its CV error
+  # moves between runs on identical input, which makes the automatic best-K
+  # pick non-deterministic. Change it to check a result is not an artefact of
+  # one initialisation; keep it fixed for a reproducible run.
+  admixture_seed: 20260916
+  # Threads per ADMIXTURE process. 1 on purpose: a fixed seed is not enough on
+  # its own, because ADMIXTURE's threaded cross-validation accumulates in
+  # thread-completion order, so at -j > 1 the CV error — and therefore the
+  # auto-picked K — still moves between runs. See the schema for the numbers.
+  admixture_threads: 1
+  # Cohort size at or above which Stage 3 LD-prunes before ADMIXTURE. PLINK2
+  # refuses --indep-pairwise below 50 samples, so below this the prune is
+  # skipped, the unpruned bfile is used, and a prominent warning goes to the
+  # log and to ld_prune_status.txt. 50 is PLINK2's own floor.
+  min_samples_for_ld_prune: 50
   admixture_k: null
   cluster_labelling: "reference"      # V1's Mn/Mf/Peninsular labels via the group role
   duplicate_id_pattern: "_DK.*"       # Illumina lane suffix on the Indo VCF

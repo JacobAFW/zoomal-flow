@@ -227,6 +227,20 @@ rule run_hmmibd:
     OUTPUT: {outputs}/ibd/{cluster}/{cluster}.hmm_fract.txt + .hmm.txt
     TRY:    inspect the hmm_fract.txt — the fract_sites_IBD histogram
             should have a bulk near 0 and a small clonal spike near 1.
+
+    ⚠ KNOWN UPSTREAM LIMITATION — OUTPUT PATH LENGTH.
+    hmmIBD builds its output filenames in a fixed-size buffer and does not
+    bounds-check, so a long `-o` prefix overruns it and the process dies with
+    SIGTRAP (exit 133, "Trace/BPT trap: 5") and an EMPTY log — no message
+    explaining anything. Measured on hmmibd 2.1.3 (bioconda, osx-arm64): a
+    prefix of 46 characters works, 56 fails; the cutoff sits between, once the
+    ".hmm_fract.txt" suffix is added.
+
+    This rule stays safe by using the workspace-RELATIVE prefix
+    ({outputs}/ibd/<cluster>/<cluster>), which is short for the shipped
+    configs. It will break if you point `paths.outputs` at a deep absolute
+    directory, or run the pipeline from one. If IBD dies with exit 133 and an
+    empty log, that is this — shorten the output path.
     """
     input:
         tsv = rules.genotype_table.output.tsv,

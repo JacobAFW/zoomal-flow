@@ -21,13 +21,22 @@ pixi install && pixi run setup          # if you have not built the env yet
 ```
 
 **1. Get the reference** (~24 MB; not shipped — see "Why no reference?" below).
-From the PlasmoDB downloads page, <https://plasmodb.org/plasmo/app/downloads/>:
 
-> release-NN → **PknowlesiA1H1** → `fasta/data/` → `PlasmoDB-NN_PknowlesiA1H1_Genome.fasta`
+Go to **<https://plasmodb.org>**. PlasmoDB requires a **free account, and you
+must be logged in to download** — register once, then:
 
-Any release works. The *P. knowlesi* A1-H.1 assembly has not changed — its
-FASTA headers still record `version=2017-09-19` — so every release carries the
-same contigs at the same coordinates. Save it here:
+> **PlasmoDB** → search for *Plasmodium knowlesi* strain **A1-H.1** →
+> **Download** → **Genome** → the genomic **FASTA** file,
+> `PlasmoDB-<release>_PknowlesiA1H1_Genome.fasta`
+
+This example is built against **PlasmoDB release 67**, which is the release the
+example VCF's and mask's contig names were reconciled to. Take release 67 if it
+is offered. A later release is also fine: the A1-H.1 assembly itself has not
+changed — the FASTA headers still record `version=2017-09-19` — so the contigs
+and coordinates are the same. Step 2 tells you either way, so you do not have to
+take that on trust.
+
+Save it here:
 
 ```
 examples/data/reference/PlasmoDB-67_PknowlesiA1H1_Genome.fasta
@@ -35,10 +44,11 @@ examples/data/reference/PlasmoDB-67_PknowlesiA1H1_Genome.fasta
 
 (or put it anywhere and point `reference.fasta` in `examples/config.yaml` at it).
 
-No direct download link is given on purpose: PlasmoDB has reorganised its
-download paths before, and a copy-pasteable URL that 404s is worse than a
-navigation path that does not. What matters is the assembly, and step 2 checks
-that for you.
+No direct download URL is given on purpose. PlasmoDB has reorganised its
+download paths before — the ones this repository previously documented now
+return 404 — and downloads sit behind a login anyway, so a copy-pasteable link
+would rot and could not be fetched non-interactively regardless. The site plus a
+verification step is the arrangement that keeps working.
 
 **2. Check it and index it** — one command, a few seconds, and it saves you
 finding out from a confusing error several minutes into the run:
@@ -65,7 +75,7 @@ gitignored.
 
 ```
 outputs/structure/full/best_k.txt            → 3
-outputs/structure/full/admix_clusters.tsv    → Cluster_1 33 / Cluster_2 24 / Cluster_3 14
+outputs/structure/full/admix_clusters.tsv    → Cluster_1 24 / Cluster_2 14 / Cluster_3 33
 reports/figures/full/pca.png                 → three tight, well-separated clouds
 ```
 
@@ -90,20 +100,44 @@ host.
 
 | Cluster | n | Accessions |
 |---|---|---|
-| `Cluster_1` | 33 | ERR274221–222, ERR366426, ERR985372–374, ERR985377–385, ERR985387–394, ERR985398–404, ERR985406–408 |
-| `Cluster_2` | 24 | ERR3374031–3374058 (24 of the 28 in that range) |
-| `Cluster_3` | 14 | ERR2214838, ERR2214849, ERR2214852, ERR274224–225, ERR366425, ERR985411–416, ERR985418–419 |
+| `Cluster_1` | 24 | ERR3374031–3374058 (24 of the 28 in that range) |
+| `Cluster_2` | 14 | ERR2214838, ERR2214849, ERR2214852, ERR274224–225, ERR366425, ERR985411–416, ERR985418–419 |
+| `Cluster_3` | 33 | ERR274221–222, ERR366426, ERR985372–374, ERR985377–385, ERR985387–394, ERR985398–404, ERR985406–408 |
+
+The cluster *numbers* carry no meaning. ADMIXTURE labels its components in
+whatever order it converges on, so which group is `Cluster_1` depends on
+`structure.admixture_seed` — with the shipped seed you will reproduce the
+numbering above exactly, and changing the seed may permute the labels while
+recovering the same three groups. What matters is the partition, not the names.
 
 `ACCESSIONS.tsv` in this directory is the authoritative per-sample list, with
 each sample's country, region, host, and the cluster it occupies in the source
 cohort.
 
-**Provenance.** These are ENA-archived Malaysian *P. knowlesi* isolates. Every
-accession resolves at <https://www.ebi.ac.uk/ena/browser/text-search> — look one
-up to get its study accession, submitting centre, and any linked publication.
-This repository does not restate a study accession or citation for them,
-because it has no record of one that could be verified; treat the ENA record as
-the source of truth.
+### Provenance and citation
+
+This example is a **public subset derived from the dataset published in**:
+
+> Westaway JAF, Diez Benavente E, Auburn S, Kucharski M, Aranciaga N, Nayak S,
+> William T, Rajahram GS, Piera KA, Braima K, Tan AF, Alaza DA, Barber BE,
+> Drakeley C, Amato R, Sutanto E, Trimarsanto H, Jelip J, Anstey NM, Bozdech Z,
+> Field M, Grigg MJ. **Genomic epidemiology of *Plasmodium knowlesi* reveals
+> putative genetic drivers of adaptation in Malaysia.** *PLOS Neglected
+> Tropical Diseases* 19(3): e0012885 (2025).
+> doi:[10.1371/journal.pntd.0012885](https://doi.org/10.1371/journal.pntd.0012885)
+
+**If you use this example in anything you publish or present, cite that paper.**
+
+That study combined newly-sequenced Malaysian genomes with publicly archived
+ones, and references the original public ENA studies the archived samples came
+from. The 71 samples here are exclusively the **publicly archived** portion —
+every one is an ENA accession that was already public — so citing the paper
+above covers attribution, and its reference list is where to follow the
+accessions back to their original studies.
+
+Individual accessions also resolve directly at
+<https://www.ebi.ac.uk/ena/browser/text-search>, which gives the study
+accession and submitting centre for any one of them.
 
 Clusters `Cluster_1` and `Cluster_3` are both from Sarawak and `Cluster_2` from
 Peninsular Malaysia — so geography does **not** separate the three. Two of them
@@ -186,8 +220,9 @@ regexes matched against contig names, and there is no "MIT" substring in
 ### Why no reference?
 
 It is ~24 MB of sequence that PlasmoDB already distributes and versions
-properly. Committing a copy would bloat the repository, and a stale copy would
-be worse than none. Pointing at the source is the correct arrangement.
+properly, behind a login. Committing a copy would bloat the repository, a stale
+copy would be worse than none, and redistributing it is not ours to do.
+Pointing at the source is the correct arrangement.
 
 ---
 

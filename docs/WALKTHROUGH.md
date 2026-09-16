@@ -4,7 +4,7 @@
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
 - Config: `config/config.yaml`
-- Commit: `a8dc33c-dirty`
+- Commit: `b64b8f1-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -396,8 +396,8 @@ Run ADMIXTURE for a single K with --cv cross-validation. Operates on
 the LD-pruned bfile from the prep seam. K values run in parallel via
 Snakemake's wildcard expansion.
 
-**WHAT.** admixture --cv N cleaned.bed K  (staged in a per-stage dir so .Q
-and .P land under outputs/structure/admixture/)
+**WHAT.** admixture --cv N --seed S cleaned.bed K  (staged in a per-stage dir
+so .Q and .P land under outputs/structure/admixture/)
 
 **WHY.** ADMIXTURE is the slide-7 ancestry-bar method. CV error vs K is
 the standard model-selection diagnostic.
@@ -405,6 +405,8 @@ the standard model-selection diagnostic.
 **TUNABLES.**
 
 - `structure.admixture_cv_folds` = `5`
+- `structure.admixture_seed` = `20260916`
+- `structure.admixture_threads` = `1`
 
 **OUTPUT.** `{outputs}/structure/admixture/cleaned.{K}.{Q,P}
 + {logs}/structure/admixture_K{K}.log`
@@ -738,24 +740,49 @@ the cohort shrinking by tens.
 
 ### `ld_prune`
 
-LD-prune the cleaned bfile before ADMIXTURE.
+LD-prune the cleaned bfile before ADMIXTURE — unless the cohort is too
+small for an LD estimate to mean anything.
 
 **WHAT.** plink2 --indep-pairwise 50 5 0.5 → plink --extract --make-bed
 (plink 1.9 for the extract step; plink2 alpha segfaults on this
 combination, both produce identical bfiles).
+Below structure.min_samples_for_ld_prune samples, the prune is
+SKIPPED and the unpruned bfile is passed straight through.
 
 **WHY.** ADMIXTURE docs recommend unlinked SNPs. Without pruning, K=5
 alone took >3 h on a single core in V1; pruning takes it to
 ~minutes total. The standard 50/5/0.5 window typically retains
 5-10% of variants with full population-structure signal.
 
-**TUNABLES.** *(none)*
+The small-cohort branch exists because PLINK2 refuses outright
+below 50 samples ("there are less than 50 samples to estimate
+from"), and it is right to: an LD estimate from 20 haplotypes is
+mostly noise, and pruning on it would drop variants essentially at
+random. Before this branch existed the pipeline simply crashed
+here on any cohort under 50 — which is not acceptable for a tool
+that claims to run on any cohort. Degrading with a loud warning
+matches how the rest of the pipeline handles a missing input
+(skip + logged note, never a crash).
 
-**OUTPUT.** `{outputs}/structure/cleaned.ld.{bed,bim,fam}
-+ {outputs}/structure/cleaned.prune.in (kept-variant list)`
+**TUNABLES.**
+
+- `structure.min_samples_for_ld_prune` = `50`
+- `Window`: *(not set in this config)*
+- `params`: *(not set in this config)*
+- `stay`: *(not set in this config)*
+- `hardcoded`: *(not set in this config)*
+- `to`: *(not set in this config)*
+- `PLINK`: *(not set in this config)*
+- `defaults`: *(not set in this config)*
+
+**OUTPUT.** `{outputs}/structure/{sampleset}/cleaned.ld.{bed,bim,fam}
++ cleaned.prune.in (kept-variant list; every variant when skipped)
++ ld_prune_status.txt ("pruned" or "SKIPPED" + the reason)`
 
 **TRY.** after pruning, check `wc -l cleaned.prune.in` vs cleaned.bim —
 ~5-10% kept is typical for an outbred eukaryote at this scale.
+Read ld_prune_status.txt first: if it says SKIPPED, the counts
+will be equal because nothing was pruned.
 
 ---
 
@@ -776,7 +803,7 @@ shaped bfile from a non-biallelic dataset.
 **TUNABLES.** *(none)*
 
 **OUTPUT.** `{outputs}/structure/cleaned.{bed,bim,fam} + cleaned.ld.{bed,bim,fam}
-(never actually written)`
++ ld_prune_status.txt   (never actually written)`
 
 **TRY.** swap cohort.input_type to "wgs" — this rule disappears and the
 real WGS prep wires in instead.
@@ -923,6 +950,20 @@ basis for both connectivity plots and clonal-pair detection.
 
 **TRY.** inspect the hmm_fract.txt — the fract_sites_IBD histogram
 should have a bulk near 0 and a small clonal spike near 1.
+
+⚠ KNOWN UPSTREAM LIMITATION — OUTPUT PATH LENGTH.
+hmmIBD builds its output filenames in a fixed-size buffer and does not
+bounds-check, so a long `-o` prefix overruns it and the process dies with
+SIGTRAP (exit 133, "Trace/BPT trap: 5") and an EMPTY log — no message
+explaining anything. Measured on hmmibd 2.1.3 (bioconda, osx-arm64): a
+prefix of 46 characters works, 56 fails; the cutoff sits between, once the
+".hmm_fract.txt" suffix is added.
+
+This rule stays safe by using the workspace-RELATIVE prefix
+({outputs}/ibd/<cluster>/<cluster>), which is short for the shipped
+configs. It will break if you point `paths.outputs` at a deep absolute
+directory, or run the pipeline from one. If IBD dies with exit 133 and an
+empty log, that is this — shorten the output path.
 
 ---
 

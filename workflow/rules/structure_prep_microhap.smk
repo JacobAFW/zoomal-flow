@@ -28,7 +28,7 @@ rule microhap_structure_prep_stub:
           shaped bfile from a non-biallelic dataset.
     TUNABLES: (none until implemented)
     OUTPUT: {outputs}/structure/cleaned.{bed,bim,fam} + cleaned.ld.{bed,bim,fam}
-            (never actually written)
+            + ld_prune_status.txt   (never actually written)
     TRY:    swap cohort.input_type to "wgs" — this rule disappears and the
             real WGS prep wires in instead.
     """
@@ -41,6 +41,7 @@ rule microhap_structure_prep_stub:
         ld_bed = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bed",
         ld_bim = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.bim",
         ld_fam = f"{PATHS['outputs']}/structure/{{sampleset}}/cleaned.ld.fam",
+        status = f"{PATHS['outputs']}/structure/{{sampleset}}/ld_prune_status.txt",
     log:
         f"{PATHS['logs']}/structure/{{sampleset}}/microhap_structure_prep_stub.log",
     message:
