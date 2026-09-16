@@ -10,6 +10,7 @@
 #   rehh                 CRAN only  — no conda build anywhere
 #   rnaturalearthhires   r-universe only — no conda build anywhere
 #   SeqArray             bioconda linux-64 only; installed via BiocManager on macOS
+#   SeqVarTools          bioconda linux-64 only; installed via BiocManager on macOS
 #   ADMIXTURE, PLINK2    bioconda linux-64 only; upstream binaries on macOS
 #
 # Everything here is pinned and idempotent: re-running is a series of skips.
@@ -126,5 +127,79 @@ else
   rm -rf "$TMP"
 fi
 
+#---------------------------------------------------------------------------
+# Verify, and fail loudly if anything did not land.
+#
+# install.packages() and BiocManager::install() report a failed install as a
+# WARNING, not an error: R exits 0 even when the package is not there. That is
+# exactly how a clean-machine moimix failure once got past this script and
+# printed "postinstall complete" — the student only found out several minutes
+# into a run, as a cryptic Stage 2 error. "Complete" must mean usable, so the
+# result is checked here rather than left to whether anyone runs check-env.
+#---------------------------------------------------------------------------
 echo
-echo "==> postinstall complete. Verify with: pixi run check-env"
+echo "==> Verifying"
+
+FAILED=""
+
+MISSING_R="$("$ENV_BIN/Rscript" --vanilla - "$REHH_VERSION" <<'RSCRIPT'
+args <- commandArgs(trailingOnly = TRUE)
+rehh_version <- args[[1]]
+
+# Everything this script is responsible for putting on disk.
+want <- c("SeqArray", "SeqVarTools", "BiocParallel",
+          "rnaturalearthhires", "rehh", "moimix")
+
+bad <- character(0)
+for (p in want) {
+  if (!requireNamespace(p, quietly = TRUE)) {
+    bad <- c(bad, p)
+  } else if (p == "rehh" && as.character(packageVersion(p)) != rehh_version) {
+    bad <- c(bad, sprintf("rehh(have-%s-want-%s)", packageVersion(p), rehh_version))
+  } else {
+    message("    [ok  ] ", p, " ", as.character(packageVersion(p)))
+  }
+}
+cat(paste(bad, collapse = " "))
+RSCRIPT
+)"
+
+# Plain `if`, not `[[ ... ]] && ...`: under `set -e` a trailing test that
+# evaluates false would exit the script on the success path.
+if [[ -n "$MISSING_R" ]]; then
+  FAILED="$FAILED $MISSING_R"
+fi
+
+for tool in admixture plink2; do
+  if [[ -x "$ENV_BIN/$tool" ]]; then
+    echo "    [ok  ] $tool"
+  else
+    FAILED="$FAILED $tool"
+  fi
+done
+
+if [[ -n "$FAILED" ]]; then
+  cat >&2 <<EOF
+
+ERROR: postinstall did NOT complete. Missing:$FAILED
+
+The environment is not usable yet — do not run the pipeline against it.
+
+If moimix or SeqVarTools is in that list, the usual cause is that the
+dependency chain below it (logistf -> mice -> mitml -> jomo -> lme4 -> nloptr)
+fell back to building from source and failed. Those are pinned as conda
+binaries in pixi.toml precisely so that cannot happen, so first check the
+locked environment is actually the one in use:
+
+  pixi install          # re-materialise the env from pixi.lock
+  pixi run setup        # then re-run this script
+
+Scroll up for the R error that caused it — it names the first package that
+failed, which is the one to chase.
+EOF
+  exit 1
+fi
+
+echo
+echo "==> postinstall complete — every dependency verified present."
+echo "    Full environment check (conda stack included): pixi run check-env"

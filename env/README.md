@@ -5,12 +5,15 @@ tool the pipeline invokes is present at a recorded version — no reference to
 the V1 Indonesia pipeline's `vvg-box` env, which stays on its own separate
 install and is untouched by anything here.
 
+Run from the root of your clone — the repository root is the workspace.
+
 ```bash
-cd agnostic
 pixi install        # the conda-solvable stack, exactly as recorded in pixi.lock
-pixi run setup      # the six things conda cannot supply (below)
+pixi run setup      # the things conda cannot supply (below); non-zero if any fail
 pixi run check-env  # prints a version for every tool + package, fails if any is missing
 ```
+
+No pixi? `curl -fsSL https://pixi.sh/install.sh | bash` (docs: <https://pixi.sh>).
 
 Then run the pipeline through pixi so it picks up the environment:
 
@@ -37,13 +40,14 @@ snakemake --configfile config/config.yaml --cores 8
 | `../.pixi/` | **no** | the ~2.2 GB solved environment itself; gitignored |
 
 `pixi.toml` sits in the repo root rather than in this directory so that
-`cd agnostic && pixi install` works verbatim — pixi discovers its manifest by
-walking up from the working directory, and a manifest inside `env/` would force
-every command to carry `--manifest-path`. This directory holds everything else.
+`pixi install` works verbatim from a fresh clone — pixi discovers its manifest
+by walking up from the working directory, and a manifest inside `env/` would
+force every command to carry `--manifest-path`. This directory holds everything
+else.
 
 ## What conda cannot give us
 
-Six dependencies are not in `pixi.lock`, for reasons outside our control.
+These dependencies are not in `pixi.lock`, for reasons outside our control.
 `postinstall.sh` handles all of them, pinned and idempotent:
 
 | Dependency | Why not conda | Where it comes from |
@@ -52,13 +56,29 @@ Six dependencies are not in `pixi.lock`, for reasons outside our control.
 | `rehh` | CRAN only; no conda build on any platform | `remotes::install_version("rehh", "3.2.3")` — pinned, iHS statistics are version-sensitive |
 | `rnaturalearthhires` | r-universe only (too large for CRAN) | `install.packages(repos = "https://ropensci.r-universe.dev")` |
 | `SeqArray` | bioconda builds it for linux-64 but not osx-arm64 | conda on Linux; `BiocManager::install()` on macOS |
+| `SeqVarTools` | noarch on bioconda, but it requires `SeqArray`, so it can only be pinned where SeqArray exists | conda on Linux; `BiocManager::install()` on macOS |
 | `ADMIXTURE` | upstream ships x86-64 macOS only | bioconda on Linux; upstream x86-64 binary under Rosetta 2 on macOS |
 | `PLINK2` | bioconda has no osx-arm64 build | bioconda on Linux; upstream `plink2_mac_arm64_20250707` on macOS |
 
-`SeqVarTools` and `BiocParallel` come along too — they are moimix's build-time
-dependencies, and moimix will not install without them.
+`BiocParallel` comes along too — it is one of moimix's build-time dependencies,
+and moimix will not install without it.
 
-On **linux-64** the last three rows are already in the lock file, so
+### Why moimix's CRAN dependencies are pinned in `pixi.toml`
+
+`SeqVarTools` needs `logistf`, and `logistf` sits on top of
+`mice → mitml → jomo → lme4 → nloptr`. Left to `BiocManager::install()` those
+are **source** builds, and `nloptr` compiles NLopt with CMake — so on a machine
+without cmake the whole chain fails, `SeqVarTools` never installs, and moimix
+goes with it. Nothing else in the pipeline touches those packages; they are in
+`pixi.toml` purely so that chain is satisfied from pre-built conda binaries and
+the source path is never entered. `cmake` is pinned alongside them as a
+backstop for anything that still decides to compile.
+
+This is a failure only a *clean* machine can show you — once the chain is on
+disk it never recurs — which is why `postinstall.sh` now verifies its own work
+and exits non-zero rather than trusting that the installs succeeded.
+
+On **linux-64** the last four rows are already in the lock file, so
 `postinstall.sh` is nearly a no-op there: it installs the three R packages and
 skips the binaries.
 

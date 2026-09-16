@@ -38,7 +38,7 @@ pkgs <- c(
   # plotting
   "ggplot2", "viridis", "viridisLite", "ggnewscale", "ggbreak", "svglite",
   # Stage 2 MOI
-  "SeqArray", "moimix", "quantreg", "mgcv",
+  "SeqArray", "SeqVarTools", "moimix", "quantreg", "mgcv",
   # Stage 3 structure / trees / maps
   "ape", "ggtree", "sf", "sp", "rnaturalearth", "rnaturalearthdata",
   "rnaturalearthhires",
