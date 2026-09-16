@@ -72,13 +72,15 @@ logs/
 reports/
 .snakemake/
 
+# === Solved environment — the manifest + lock are tracked, the env is not ===
+.pixi/
+
 # === Python ===
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .venv/
 venv/
-env/
 *.egg-info/
 .pytest_cache/
 
@@ -109,3 +111,13 @@ data_old_symlink
 !tests/tiny_cohort/config.yaml
 !tests/tiny_cohort/generate.py
 !tests/tiny_cohort/README.md
+
+# === Environment manifest (agnostic/env/) — tracked on purpose ===
+# The `venv/` patterns above must not swallow this directory. Named file by
+# file rather than with `!env/**`, so default-deny still applies to anything
+# that lands in here later (a stray .env, a key, a data file).
+!env/
+!env/README.md
+!env/postinstall.sh
+!env/check_env.sh
+!env/environment.yml

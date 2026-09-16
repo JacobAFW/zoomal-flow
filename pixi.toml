@@ -1,0 +1,109 @@
+# pixi.toml — ZOOMAL-Flow's own pinned environment.
+#
+# This manifest makes `agnostic/` standalone: clone it, run `pixi install`, and
+# every tool the pipeline invokes resolves without reference to the V1 vvg-box
+# env (`../envs/activate.sh`). V1 stays on its own env; the two are independent.
+#
+#   cd agnostic
+#   pixi install          # conda-solvable stack, exactly as pinned in pixi.lock
+#   pixi run setup        # the handful of tools conda cannot supply (see env/README.md)
+#   pixi run snakemake --configfile config/config.yaml --cores 8
+#
+# The solved env lands in agnostic/.pixi/ and is gitignored — only this file and
+# pixi.lock are tracked. Version pins mirror what V1 actually ran with (see
+# env/README.md for the full table and every deviation).
+
+[workspace]
+name = "zoomal-flow"
+version = "0.1.0"
+description = "Data-agnostic population-genetics pipeline for zoonotic malaria"
+channels = ["conda-forge", "bioconda"]
+platforms = ["osx-arm64", "linux-64"]
+
+# ---------------------------------------------------------------------------
+# Workflow engine + the Python the workflow code and tests import.
+# ---------------------------------------------------------------------------
+[dependencies]
+python = "3.12.*"
+pip = "*"
+snakemake = "9.22.*"
+pyyaml = ">=6.0,<7"          # workflow/Snakefile, scripts/py/validate_config.py
+jsonschema = ">=4.0,<5"      # config-schema validation at DAG parse time
+numpy = ">=2.0,<3"           # tests/tiny_cohort/generate.py
+pytest = ">=8.0,<9"          # tests/
+
+# ---------------------------------------------------------------------------
+# Command-line tools the rules shell out to.
+#   bcftools  — every VCF operation, Stages 0-6
+#   htslib    — bgzip / tabix (indexing)
+#   samtools  — faidx, for building the reference .fai (see examples/README)
+#   plink     — Stage 3 LD prune / PCA / distance matrix (PLINK 1.9 semantics)
+#   plink2    — Stage 1/3 filtering + frequency work            [see env/README.md]
+#   admixture — Stage 3 ancestry proportions                    [see env/README.md]
+#   hmmibd    — Stage 4 pairwise IBD                            [see env/README.md]
+#   quarto    — the Stage 7 report
+# ---------------------------------------------------------------------------
+bcftools = "1.23.*"
+htslib = "1.23.*"
+samtools = "1.23.*"
+plink = "1.90*"
+hmmibd = "2.1.*"
+quarto = ">=1.9,<2"
+
+# ---------------------------------------------------------------------------
+# R + every package the scripts in scripts/R/ actually load.
+# Derived from the library()/requireNamespace()/pkg:: calls, not guessed.
+# ---------------------------------------------------------------------------
+r-base = "4.5.*"
+
+# core data manipulation — loaded by nearly every script
+r-tidyverse = "2.0.*"
+"r-data.table" = "1.17.*"
+r-jsonlite = ">=2.0,<3"       # validate_metadata.R
+"r-r.utils" = ">=2.13,<3"     # run_rehh_ihs.R
+
+# plotting stack
+r-viridis = ">=0.6.5,<0.7"
+r-viridislite = ">=0.4.3,<0.5"
+r-ggnewscale = ">=0.5.2,<0.6" # plot_province_map.R (two colour scales on one map)
+r-ggbreak = ">=0.1.7,<0.2"    # plot_clonal_temporal.R (axis break over date gaps)
+r-svglite = ">=2.2,<3"        # ggsave(.svg) — every figure ships png + svg
+
+# Stage 3 — phylogenetics and maps
+r-ape = ">=5.8,<6"            # plot_nj_tree.R (NJ tree from the PLINK distance matrix)
+bioconductor-ggtree = ">=4.0,<5"
+r-sf = ">=1.1,<2"             # plot_province_map.R
+r-sp = ">=2.2,<3"             # introgression_detect.R (point.in.polygon)
+r-rnaturalearth = ">=1.2,<2"
+r-rnaturalearthdata = ">=1.0,<2"
+
+# Stage 4 — IBD networks
+r-igraph = ">=2.3,<3"         # clonal_clusters.R, plot_ibd_connectivity.R
+
+# Stage 2 — moimix attaches these at namespace-load time. Missing them is the
+# failure V1's install.sh was patched for; they are pinned here from the start.
+r-quantreg = ">=6.1,<7"
+r-mgcv = ">=1.9,<2"
+
+# bootstrappers for the four packages conda cannot supply (see env/postinstall.sh)
+r-biocmanager = ">=1.30,<2"
+r-remotes = ">=2.5,<3"
+
+# ---------------------------------------------------------------------------
+# Platform-specific. Three tools have no osx-arm64 conda build; on macOS they
+# come from env/postinstall.sh instead (ADMIXTURE via Rosetta, PLINK2 as the
+# upstream arm64 binary, SeqArray via BiocManager). On Linux conda has them all,
+# so the postinstall step is nearly a no-op there.
+# ---------------------------------------------------------------------------
+[target.linux-64.dependencies]
+admixture = "1.3.*"
+plink2 = "*"
+bioconductor-seqarray = ">=1.50,<2"
+
+# ---------------------------------------------------------------------------
+# Tasks — the documented entry points.
+# ---------------------------------------------------------------------------
+[tasks]
+setup = { cmd = "bash env/postinstall.sh", description = "Install the non-conda tools (see env/README.md)" }
+check-env = { cmd = "bash env/check_env.sh", description = "Verify every pipeline tool + R package resolves" }
+test = { cmd = "pytest tests -q", description = "Run the Python test suite" }

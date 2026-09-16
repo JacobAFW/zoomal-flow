@@ -51,9 +51,8 @@ learned by watching the positive control fail:
 ## Regenerate
 
 ```bash
-# Activate the env first so bcftools is on PATH.
-source ../../../envs/activate.sh
-python tests/tiny_cohort/generate.py
+# Run through pixi so bcftools is on PATH (from agnostic/).
+pixi run python tests/tiny_cohort/generate.py
 ```
 
 Deterministic seed (`RNG_SEED = 20260803`) — the output is byte-identical

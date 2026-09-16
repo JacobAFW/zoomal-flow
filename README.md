@@ -24,6 +24,8 @@ docs. By design it does **not** track:
   individual-level fields under publication embargo
 - **run artefacts** — `outputs/`, `logs/`, `reports/`, `.snakemake/`
 - credentials, tokens, or environment files
+- the **solved environment** itself (`.pixi/`, ~2.2 GB) — only the `pixi.toml`
+  manifest and the `pixi.lock` that pins it are tracked
 
 Data lives outside version control. The pipeline expects it under `agnostic/data/`
 at the paths the active config points to (see Quick start). `.gitignore` is
@@ -37,8 +39,13 @@ can't be committed by accident.
 ```bash
 cd agnostic
 
-# 1. Activate the V1 env (carried over unchanged; not duplicated here)
-source ../envs/activate.sh
+# 1. Build the environment. ZOOMAL-Flow owns its own pinned env — pixi.toml +
+#    pixi.lock in this directory. `install` gets the locked conda stack;
+#    `setup` adds the six tools no conda channel publishes (moimix, rehh,
+#    rnaturalearthhires, and on macOS SeqArray/ADMIXTURE/PLINK2).
+pixi install
+pixi run setup
+pixi run check-env      # prints a version for every tool; fails if any is missing
 
 # 2. Put your cohort inputs under agnostic/data/ (this dir is gitignored):
 #      data/vcf/<cohort>.vcf.gz        bgzipped + indexed
@@ -55,15 +62,26 @@ source ../envs/activate.sh
 cp config/cohort.example.yaml config/config.yaml
 
 # 4. Dry-run to validate config + DAG, then run.
-snakemake --cores 1 -n         # validates config; prints the DAG
-snakemake --cores 8            # actually runs
+pixi run snakemake --cores 1 -n     # validates config; prints the DAG
+pixi run snakemake --cores 8        # actually runs
 ```
 
 To run with a different config file:
 
 ```bash
-snakemake --cores 8 --configfile path/to/my_cohort.yaml
+pixi run snakemake --cores 8 --configfile path/to/my_cohort.yaml
 ```
+
+`pixi run <cmd>` runs a single command inside the environment. To work in it
+for a while instead, `pixi shell` once and then call `snakemake` directly.
+
+No pixi at your site? `env/environment.yml` is a conda/mamba fallback — you get
+a fresh solve rather than the recorded one. Both paths are documented in
+**`env/README.md`**, along with the version table, the one deviation from V1
+(hmmIBD), and the verification run behind it.
+
+The V1 Indonesia pipeline keeps its own separate `vvg-box` env in
+`../envs/` — nothing here touches it, and nothing here needs it.
 
 ---
 
@@ -240,13 +258,15 @@ crash the pipeline.
 ```bash
 # Everything (config validation, contig derivation, walkthrough parser,
 # Stage 5 units + the introgression positive control).
-pytest tests/
+pixi run test
 
 # Individual suites also run standalone, without pytest:
-python tests/test_contigs_from_fai.py     # contigs_from_fai (acceptance §7)
-python tests/test_config_validation.py    # config-schema negative tests
-Rscript tests/R/test_introgression_units.R  # Stage 5 component units
+pixi run python tests/test_contigs_from_fai.py     # contigs_from_fai (acceptance §7)
+pixi run python tests/test_config_validation.py    # config-schema negative tests
+pixi run Rscript tests/R/test_introgression_units.R  # Stage 5 component units
 ```
+
+(Drop the `pixi run` prefix if you are already inside `pixi shell`.)
 
 `tests/test_introgression.py` is the Stage 5 **positive control**: the tiny
 cohort injects a known introgression event and the test asserts the pipeline
