@@ -9,7 +9,10 @@
 #
 # It is a NAMED target rather than part of `rule all`:
 #
-#     snakemake --configfile <cfg> report
+#     snakemake report --configfile <cfg>
+#
+# (target first: --configfile takes one or more files, so a target written
+# after it is swallowed as a second config file.)
 #
 # Two reasons. The report is the last thing you want, so it depends on
 # FINAL_TARGETS and running it pulls the whole pipeline anyway — but keeping it

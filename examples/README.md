@@ -15,8 +15,9 @@ pointing the pipeline at data that matters.
 
 ## Run it
 
+From the root of your clone (the repository root is the workspace):
+
 ```bash
-cd agnostic
 pixi install && pixi run setup          # if you have not built the env yet
 ```
 
@@ -98,17 +99,19 @@ Every sample is a public ENA accession. Nothing here is under embargo, and the
 metadata carries only published fields: the accession, country, region, and
 host.
 
-| Cluster | n | Accessions |
-|---|---|---|
-| `Cluster_1` | 24 | ERR3374031–3374058 (24 of the 28 in that range) |
-| `Cluster_2` | 14 | ERR2214838, ERR2214849, ERR2214852, ERR274224–225, ERR366425, ERR985411–416, ERR985418–419 |
-| `Cluster_3` | 33 | ERR274221–222, ERR366426, ERR985372–374, ERR985377–385, ERR985387–394, ERR985398–404, ERR985406–408 |
+| Source-cohort group | Region | n | Label with the shipped seed | Accessions |
+|---|---|---|---|---|
+| Peninsular | Peninsular | 24 | `Cluster_1` | ERR3374031–3374058 (24 of the 28 in that range) |
+| Mn | Sarawak | 14 | `Cluster_2` | ERR2214838, ERR2214849, ERR2214852, ERR274224–225, ERR366425, ERR985411–416, ERR985418–419 |
+| Mf | Sarawak | 33 | `Cluster_3` | ERR274221–222, ERR366426, ERR985372–374, ERR985377–385, ERR985387–394, ERR985398–404, ERR985406–408 |
 
-The cluster *numbers* carry no meaning. ADMIXTURE labels its components in
-whatever order it converges on, so which group is `Cluster_1` depends on
-`structure.admixture_seed` — with the shipped seed you will reproduce the
-numbering above exactly, and changing the seed may permute the labels while
-recovering the same three groups. What matters is the partition, not the names.
+The cluster *numbers* carry no meaning — they are an artefact of the seed, not
+a property of the data. ADMIXTURE labels its components in whatever order it
+converges on, so which group is `Cluster_1` depends on
+`structure.admixture_seed`. With the shipped seed you will reproduce the
+right-hand column exactly; change the seed and the same three groups can come
+back under permuted names. Read the partition, not the labels: the stable
+handles are the group sizes (24 / 14 / 33) and the accessions in each.
 
 `ACCESSIONS.tsv` in this directory is the authoritative per-sample list, with
 each sample's country, region, host, and the cluster it occupies in the source
@@ -139,12 +142,14 @@ Individual accessions also resolve directly at
 <https://www.ebi.ac.uk/ena/browser/text-search>, which gives the study
 accession and submitting centre for any one of them.
 
-Clusters `Cluster_1` and `Cluster_3` are both from Sarawak and `Cluster_2` from
-Peninsular Malaysia — so geography does **not** separate the three. Two of them
-are host-associated lineages rather than geographic ones, which is why the
-config uses `cluster_labelling: "numbered"` and the clusters come out as
-`Cluster_1/2/3` rather than place names. Naming them after their members'
-majority region would produce two clusters both called "Sarawak".
+Geography does **not** separate these three groups. One of them is from
+Peninsular Malaysia, but the other two are *both* from Sarawak — they are
+host-associated lineages (the `Mf` and `Mn` groups of the source cohort), not
+geographic ones. That is why the config sets `cluster_labelling: "numbered"`:
+`auto` names each component after its members' majority region, which here
+would hand the same name, "Sarawak", to two different clusters. Numbered labels
+are the honest option for a cohort whose structure is not geographic — at the
+cost, noted above, of the numbers themselves meaning nothing.
 
 ### What was done to the VCF
 

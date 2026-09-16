@@ -27,8 +27,9 @@ docs. By design it does **not** track:
 - the **solved environment** itself (`.pixi/`, ~2.2 GB) — only the `pixi.toml`
   manifest and the `pixi.lock` that pins it are tracked
 
-Data lives outside version control. The pipeline expects it under `agnostic/data/`
-at the paths the active config points to (see Quick start). `.gitignore` is
+Data lives outside version control. The pipeline expects it under `data/` in
+the repository root, at the paths the active config points to (see Quick
+start). `.gitignore` is
 default-deny (all data/genomics/secret/sample-sheet patterns) so a stray input
 can't be committed by accident.
 
@@ -41,18 +42,26 @@ still applies to everything around them.
 
 ## Quick start
 
+Run these from the root of your clone — the repository root *is* the
+workspace, so there is nothing to `cd` into.
+
 ```bash
-cd agnostic
+# 0. Get pixi, if you do not have it. One self-contained binary, no root, no
+#    system Python; it installs to ~/.pixi/bin (add that to your PATH when it
+#    tells you to). Docs: https://pixi.sh
+curl -fsSL https://pixi.sh/install.sh | bash
 
 # 1. Build the environment. ZOOMAL-Flow owns its own pinned env — pixi.toml +
 #    pixi.lock in this directory. `install` gets the locked conda stack;
-#    `setup` adds the six tools no conda channel publishes (moimix, rehh,
-#    rnaturalearthhires, and on macOS SeqArray/ADMIXTURE/PLINK2).
+#    `setup` adds the tools no conda channel publishes (moimix, rehh,
+#    rnaturalearthhires, and on macOS SeqArray/SeqVarTools/ADMIXTURE/PLINK2).
+#    `setup` exits non-zero if anything failed to install — a clean exit means
+#    the environment is actually usable.
 pixi install
 pixi run setup
 pixi run check-env      # prints a version for every tool; fails if any is missing
 
-# 2. Put your cohort inputs under agnostic/data/ (this dir is gitignored):
+# 2. Put your cohort inputs under data/ (this dir is gitignored):
 #      data/vcf/<cohort>.vcf.gz        bgzipped + indexed
 #      data/reference/<ref>.fasta      with a .fai beside it
 #      data/metadata/samples.tsv       one tidy row per sample (see "Role-based
@@ -96,7 +105,6 @@ The repository ships a complete, runnable cohort, so you can see the whole
 pipeline work before you point it at your own data:
 
 ```bash
-cd agnostic
 pixi install && pixi run setup
 
 # fetch the P. knowlesi A1-H.1 reference from PlasmoDB into
@@ -325,8 +333,12 @@ set `paths.outputs` to something shorter — and it will work unchanged.
 One HTML document that assembles whatever the pipeline actually produced:
 
 ```bash
-pixi run snakemake --configfile config/config.yaml report --cores 8
+pixi run snakemake report --configfile config/config.yaml --cores 8
 ```
+
+Note the order: `report` comes *before* `--configfile`. Snakemake's
+`--configfile` takes one or more files, so a target written after it is read as
+a second config file and the run dies with `FileNotFoundError: 'report'`.
 
 It lands at `{paths.reports}/report.html`, self-contained — every figure is
 embedded, so the single file can be emailed or archived on its own.

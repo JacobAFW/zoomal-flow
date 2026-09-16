@@ -51,7 +51,7 @@ learned by watching the positive control fail:
 ## Regenerate
 
 ```bash
-# Run through pixi so bcftools is on PATH (from agnostic/).
+# Run through pixi so bcftools is on PATH (from the repository root).
 pixi run python tests/tiny_cohort/generate.py
 ```
 
@@ -61,8 +61,8 @@ across regenerations on the same platform.
 ## Run the smoke test
 
 ```bash
-cd agnostic/
-snakemake --configfile tests/tiny_cohort/config.yaml --cores 2
+# from the repository root
+pixi run snakemake --configfile tests/tiny_cohort/config.yaml --cores 2
 ```
 
 That runs Stages 0–5 against the tiny cohort (58 jobs, ~25 s on 4 cores).
@@ -99,7 +99,7 @@ produces 8 raw calls (6 true + 2 singleton false positives, both removed by
 the low-n filter) and a headline of exactly that one window.
 
 The same fixture drives the detection-rule sweep; see the Introgression
-section of `agnostic/README.md`.
+section of the top-level `README.md`.
 
 ## Design intent
 
