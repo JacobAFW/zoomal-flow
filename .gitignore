@@ -121,3 +121,25 @@ data_old_symlink
 !env/postinstall.sh
 !env/check_env.sh
 !env/environment.yml
+
+# === Public pull-and-play example (examples/) — the sanctioned exception ===
+# This is the ONE place a VCF + metadata are committed, and it is safe because
+# every sample is a published ENA accession and every field is public. The
+# default-deny patterns above (data/, *.vcf.gz, *.csi, *.tsv, *.list) would
+# otherwise swallow all of it, so each committed file is un-ignored BY NAME —
+# never with a glob, so a stray file dropped into examples/data/ is still
+# ignored by default. examples/build_example.sh re-derives these and asserts
+# zero overlap with the embargoed cohort before it writes them.
+!examples/data/
+!examples/data/vcf/
+!examples/data/vcf/example.vcf.gz
+!examples/data/vcf/example.vcf.gz.csi
+!examples/data/metadata/
+!examples/data/metadata/samples.tsv
+!examples/data/reference/
+!examples/data/reference/regions_to_mask.list
+!examples/ACCESSIONS.tsv
+# The reference FASTA is NOT shipped — it is ~24 MB and users fetch it from
+# PlasmoDB (examples/README.md). Keep it ignored even though it sits here.
+examples/data/reference/*.fasta
+examples/data/reference/*.fasta.fai

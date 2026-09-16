@@ -32,6 +32,11 @@ at the paths the active config points to (see Quick start). `.gitignore` is
 default-deny (all data/genomics/secret/sample-sheet patterns) so a stray input
 can't be committed by accident.
 
+**One deliberate exception:** the public example under `examples/` — a VCF, a
+sample table, and a mask, all of which are already-public data (see "Pull and
+play" below). Those files are un-ignored individually, by name, so default-deny
+still applies to everything around them.
+
 ---
 
 ## Quick start
@@ -82,6 +87,46 @@ a fresh solve rather than the recorded one. Both paths are documented in
 
 The V1 Indonesia pipeline keeps its own separate `vvg-box` env in
 `../envs/` — nothing here touches it, and nothing here needs it.
+
+---
+
+## Pull and play — try it on public data first
+
+The repository ships a complete, runnable cohort, so you can see the whole
+pipeline work before you point it at your own data:
+
+```bash
+cd agnostic
+pixi install && pixi run setup
+
+# fetch the P. knowlesi A1-H.1 reference from PlasmoDB into
+# examples/data/reference/  (navigation path + why there is no direct link:
+# examples/README.md), then check you got the right assembly:
+pixi run bash examples/check_reference.sh
+
+pixi run snakemake --configfile examples/config.yaml --cores 4
+```
+
+**71 publicly-archived ENA isolates of *P. knowlesi* from Malaysia, 18,279
+SNPs, ~4 MB.** ADMIXTURE recovers K = 3 by cross-validation, and all 71 samples
+land in the same cluster they occupy in the full 981-sample cohort the example
+was drawn from. Every stage runs — QC, Fws/MOI, structure, IBD, clonality,
+introgression — and both the full and de-clonalized arms are built.
+
+This is the one place the repository deliberately commits a VCF and a sample
+table. It is safe because every sample is a published ENA accession and every
+metadata field is public; `examples/build_example.sh` re-derives the files and
+refuses to write them unless the sample list shares zero IDs with the embargoed
+cohort. The `.gitignore` un-ignores those files **by name**, so default-deny
+still covers anything else that lands in `examples/data/`.
+
+The reference genome is not shipped — it is ~24 MB that PlasmoDB already
+versions properly. `examples/README.md` has the accession list, the provenance,
+what is deliberately switched off and why, and how the example's contig names
+were reconciled with PlasmoDB's.
+
+Treat it as a demonstration that the pipeline runs and your environment is
+correct — not as a result about *P. knowlesi*.
 
 ---
 

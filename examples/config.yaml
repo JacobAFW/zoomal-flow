@@ -1,0 +1,161 @@
+# Public pull-and-play example.
+# --------------------------------------------------------------------------
+# 24 publicly-archived ENA samples of Plasmodium knowlesi from Malaysia, run
+# end to end through every stage of the pipeline. Nothing here is embargoed:
+# the VCF, the metadata and the mask are all committed to this repository and
+# every sample is a published ENA accession. See examples/README.md for the
+# accession list, the provenance, and how to fetch the reference.
+#
+# The one thing you must supply is the reference FASTA — it is ~24 MB, so the
+# repo points at PlasmoDB rather than shipping it. The path below is where the
+# README tells you to put it.
+#
+#   snakemake --configfile examples/config.yaml --cores 4
+#
+# This is a DEMONSTRATION cohort. It is deliberately small and heavily thinned,
+# so treat its numbers as "the pipeline runs and recovers the expected
+# structure", not as a result about P. knowlesi.
+# --------------------------------------------------------------------------
+
+cohort:
+  name: "public_example"
+  input_type: "wgs"
+  # 45,105 biallelic SNPs, thinned to >= 400 bp spacing to keep the committed
+  # file ~3 MB. Contigs are named for the PlasmoDB assembly (LT727648..661).
+  vcf: "examples/data/vcf/example.vcf.gz"
+
+reference:
+  # NOT shipped — download it from PlasmoDB and index it (examples/README.md):
+  #   PlasmoDB-67_PknowlesiA1H1_Genome.fasta  +  samtools faidx
+  fasta: "examples/data/reference/PlasmoDB-67_PknowlesiA1H1_Genome.fasta"
+  # The PlasmoDB assembly names its contigs by ENA accession, so the nuclear
+  # chromosomes are LT727648..LT727661 and there is no "MIT"/"API" substring to
+  # match on. Exclude the organelles by accession: LT727662 = mitochondrion,
+  # LT727663 = apicoplast. (Patterns are Python regexes matched with re.search.)
+  exclude_contigs: ["LT727662", "LT727663"]
+  mask_regions: "examples/data/reference/regions_to_mask.list"
+
+metadata:
+  table: "examples/data/metadata/samples.tsv"
+  gis: null                                  # no public per-sample coordinates → map skipped
+  roles:
+    sample_id:    "sample_id"
+    # No `group`: the point of the example is that ADMIXTURE *derives* the
+    # clusters. Handing it pre-computed labels would beg the question.
+    group:        null
+    geography:    "geography"                # Sarawak / Peninsular
+    country:      "country"                  # Malaysia throughout
+    host:         "host"                     # Human throughout
+    # No `date`: collection dates are not public for these samples, so the
+    # temporal clonality plot is skipped. That is the graceful-degradation
+    # behaviour working as intended, not a failure.
+    date:         null
+    case_control: null
+
+controls:
+  exclude_patterns: []                       # no controls in this cohort
+
+qc:
+  min_mac: 2
+  filter_pass: true
+
+moi:
+  min_maf: 0.05
+  fws_polyclonal_cutoff: 0.95
+  # Relaxed from the 0.95 a real cohort would use. Fws is estimated from
+  # within-sample allele balance, and these are archival high-quality isolates
+  # that come out near-monoclonal; at 0.95 the exclusion step removes almost
+  # nobody, which is fine, but 0.90 makes the point that the knob exists and
+  # keeps the whole cohort in for the downstream stages.
+  fws_exclusion_cutoff: 0.90
+  seed: 2023
+
+structure:
+  min_maf: 0.01
+  # Both relaxed from the 0.10 a real cohort would use. The example VCF is
+  # already site-filtered (every retained site is called in >= 90% of these 24
+  # samples), but the archival Peninsular batch is lower-coverage than the
+  # Sarawak batches, and 0.10 would drop it — taking the third cluster with it.
+  max_sample_missing: 0.25
+  max_variant_missing: 0.25
+  admixture_k_min: 2
+  admixture_k_max: 5                         # 24 samples; scanning to 10 is pointless
+  admixture_cv_folds: 5
+  admixture_k: null                          # pick K by CV error, as a new user would
+  # "numbered" (Cluster_1/2/3), not "auto". `auto` names each component by its
+  # members' majority `geography`, but two of the three clusters here are both
+  # from Sarawak — they are host-associated lineages, not geographic ones — so
+  # geography genuinely cannot tell them apart and `auto` would produce
+  # Sarawak_1 / Sarawak_2. Numbered labels are the honest option for a cohort
+  # whose structure is not geographic.
+  cluster_labelling: "numbered"
+  duplicate_id_pattern: null                 # no lane suffixes on ENA accessions
+
+ibd:
+  cluster_min_maf: 0.01
+  clonal_ibd_threshold: 0.95
+  min_cluster_n: 5                           # 8 per cluster clears this
+  focal_cluster: null
+
+clonality:
+  # Both arms are built, as everywhere else in the pipeline. These are archival
+  # isolates from separate infections, so expect few or no clonal groups and a
+  # `unique` arm that matches `full` — which is itself a useful thing to see:
+  # the comparison table is how you check that, rather than assuming it.
+  declonalize: true
+
+introgression:
+  window_size_bp: 10000
+  min_snps_per_window: 5                     # ~19 SNPs per 10 kb window at this density
+  min_cluster_n: 5
+  min_samples_per_window: 2
+  # On a real cohort you DERIVE this floor by permutation against an explicit
+  # FDR target (scripts/R/introgression_floor_derivation.R, docs §9.5) — it is
+  # cohort-specific and inheriting a number from another study is wrong. Here
+  # the clusters are 8 samples each, so a derived floor is not meaningful; 25%
+  # (2 of 8) just keeps the stage running so you can see its outputs. Do not
+  # read the window list as a finding.
+  per_cluster_min_pct: 0.25
+  per_cluster_min_samples: 0
+  pairs: "all"                               # K=3 → 3 pairs
+  pair_warn_threshold: 15
+  detection_rule: "absolute"
+  contour_level_other: 5.0e-4
+  contour_level_own:   5.0e-4
+  distance_margin: 15
+  distance_adaptive: false
+  distance_adaptive_quantile: 0.9
+  # No focal subgroup. The focal test asks whether introgression is enriched in
+  # a named subgroup, which is a claim about a specific cohort — the example
+  # makes no such claim.
+  focal_group: null
+  focal_role: "geography"
+  focal_fdr: 0.05
+  focal_permutations: 1000
+  focal_seed: 20260828
+  # Masking SICAvar/KIR windows needs a GFF, which is a separate PlasmoDB
+  # download. Left off so the example runs with the genome FASTA alone. On a
+  # real P. knowlesi cohort, turn this on — those hypervariable families
+  # generate false-positive introgression calls.
+  gene_family_filters: []
+  gff: null
+
+selection:
+  # The iHS scan compares a case group against a control group, and defining
+  # those needs a cohort-specific hypothesis. The example has none, so the
+  # stage produces nothing. Add a model here to switch it on.
+  models: []
+  ihs_threshold:     4
+  ihs_p_threshold:   0.0001
+  window_size_bp:    10000
+  window_overlap_bp: 1000
+  min_extr_markers:  3
+
+compute:
+  threads_heavy: 4
+  threads_light: 1
+
+paths:
+  outputs: "examples/outputs"
+  logs:    "examples/logs"
+  reports: "examples/reports"
