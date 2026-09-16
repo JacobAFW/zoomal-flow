@@ -3,8 +3,8 @@
 *Generated from `workflow/rules/*.smk` docstrings by `scripts/py/render_walkthrough.py`.*  
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
-- Config: `config/cohort.example.yaml`
-- Commit: `e43eca4-dirty`
+- Config: `config/config.yaml`
+- Commit: `a8dc33c-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -28,7 +28,7 @@ if the VCF mtime moves past the index's.
 
 **TUNABLES.**
 
-- `cohort.vcf` = `'data/vcf/merged_popgen.clean.vcf.gz'`
+- `cohort.vcf` = `'data/vcf/cohort.vcf.gz'`
 
 **OUTPUT.** `<cohort.vcf>.csi`
 
@@ -50,7 +50,7 @@ here, avoids redundant VCF reads.
 
 **TUNABLES.**
 
-- `cohort.vcf` = `'data/vcf/merged_popgen.clean.vcf.gz'`
+- `cohort.vcf` = `'data/vcf/cohort.vcf.gz'`
 
 **OUTPUT.** `{outputs}/setup/vcf_samples.txt`
 
@@ -71,8 +71,8 @@ is the input later stages need for PLINK chromosome codes.
 
 **TUNABLES.**
 
-- `reference.fasta` = `'data/reference/strain_A1_H.1.Icor.fasta'`
-- `reference.exclude_contigs` = `['MIT', 'API']`
+- `reference.fasta` = `'data/reference/reference.fasta'`
+- `reference.exclude_contigs` = `[]`
 
 **OUTPUT.** `{outputs}/setup/nuclear_contigs.txt, {outputs}/setup/contig_map.tsv`
 
@@ -97,7 +97,7 @@ a note and let dependent analyses skip gracefully (DESIGN §3b).
 **TUNABLES.**
 
 - `metadata.table` = `'data/metadata/samples.tsv'`
-- `metadata.roles` = `{'sample_id': 'Sample', 'group': 'Cluster', 'geography': 'State', 'country': 'Country', 'host': 'Host', 'date': 'EnrolDate', 'case_control': None}`
+- `metadata.roles` = `{'sample_id': 'sample_id', 'group': None, 'geography': None, 'country': None, 'host': None, 'date': None, 'case_control': None}`
 
 **OUTPUT.** `{outputs}/metadata/samples.tsv`
 
@@ -149,7 +149,7 @@ relying on one being silently sitting on disk.
 
 **TUNABLES.**
 
-- `reference.exclude_contigs` = `['MIT', 'API']`
+- `reference.exclude_contigs` = `[]`
 - `controls.exclude_patterns` = `['ctrl', 'cpos', 'cneg']`
 
 **OUTPUT.** `{outputs}/qc/snps.nuclear.vcf.gz`
@@ -497,7 +497,7 @@ reference  — components labelled by majority group role
 
 **TUNABLES.**
 
-- `structure.cluster_labelling` = `'reference'`
+- `structure.cluster_labelling` = `'numbered'`
 - `structure.admixture_k`: *(not set in this config)*
 
 **OUTPUT.** `{outputs}/structure/admix_clusters.tsv
@@ -602,7 +602,7 @@ tool happy without re-normalisation.
 
 **TUNABLES.**
 
-- `reference.fasta` = `'data/reference/strain_A1_H.1.Icor.fasta'`
+- `reference.fasta` = `'data/reference/reference.fasta'`
 
 **OUTPUT.** `{outputs}/structure/snps.normalised.vcf.gz`
 
@@ -690,7 +690,7 @@ specific. The agnostic version takes the regex from config; null
 
 **TUNABLES.**
 
-- `structure.duplicate_id_pattern` = `'_DK.*'`
+- `structure.duplicate_id_pattern`: *(not set in this config)*
 
 **OUTPUT.** `{outputs}/structure/Pk.dups`
 
@@ -703,6 +703,9 @@ the strip is happening at all.
 ### `final_filters`
 
 Sequential 4-step filter chain (legacy order V→S→V→M):
+0. Drop the {sampleset} exclusion list alongside the duplicates
+(`full` = empty, a no-op; `unique` = the non-representative members
+of each clonal group).
 1. Remove duplicate replicates + lenient variant filter (--geno 0.20).
 2. Sample-missingness filter (--mind) on the cleaned variants.
 3. Stricter variant filter (--geno) on the post-sample set.
@@ -714,14 +717,19 @@ Sequential 4-step filter chain (legacy order V→S→V→M):
 Indonesia cohort because the 1.4M-variant unfiltered set carries
 many low-coverage sites that drag down per-sample missingness.
 The V→S→V→M order matches HPC behaviour and recovers the cohort.
+NOTE: the MAF filter (step 4) is re-applied per sample set on purpose —
+allele frequencies are exactly what clonal pseudo-replication
+distorts, so the de-clonalized arm must re-derive them rather than
+inherit the full-set variant list.
 
 **TUNABLES.**
 
+- `clonality.declonalize` = `True`
 - `structure.max_sample_missing` = `0.1`
 - `structure.max_variant_missing` = `0.1`
 - `structure.min_maf` = `0.01`
 
-**OUTPUT.** `{outputs}/structure/cleaned.{bed,bim,fam}`
+**OUTPUT.** `{outputs}/structure/{sampleset}/cleaned.{bed,bim,fam}`
 
 **TRY.** bump max_sample_missing to 0.05 and re-run — every step shows
 the cohort shrinking by tens.
@@ -973,7 +981,7 @@ never returns.
 **TUNABLES.**
 
 - `ibd.clonal_ibd_threshold` = `0.95`
-- `ibd.focal_cluster` = `'Peninsular'`
+- `ibd.focal_cluster`: *(not set in this config)*
 
 **OUTPUT.** `{outputs}/ibd/clonal_clusters.tsv       (always)
 {outputs}/ibd/focal_<name>_clones.tsv    (only if
@@ -1055,9 +1063,9 @@ SICA|KIR grep, and skips itself with a logged note when no GFF is set.
 
 - `introgression.min_samples_per_window` = `2`
 - `introgression.per_cluster_min_pct` = `0`
-- `introgression.per_cluster_min_samples` = `32`
-- `introgression.gene_family_filters` = `['SICA', 'KIR']`
-- `introgression.gff` = `'data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff'`
+- `introgression.per_cluster_min_samples` = `3`
+- `introgression.gene_family_filters` = `[]`
+- `introgression.gff`: *(not set in this config)*
 - `introgression.window_size_bp` = `10000`
 
 **OUTPUT.** `{outputs}/introgression/introgressed_windows_filtered.tsv,
@@ -1066,7 +1074,9 @@ SICA|KIR grep, and skips itself with a logged note when no GFF is set.
 {outputs}/introgression/windows_by_cluster.tsv,
 {outputs}/introgression/windows_across_chrom.tsv,
 {outputs}/introgression/average_windows_for_clusters.tsv,
-{outputs}/introgression/intro_per_sample_summary.tsv`
+{outputs}/introgression/intro_per_sample_summary.tsv,
+{outputs}/introgression/gene_family_masked_windows.tsv,
+{outputs}/introgression/hypervariable_masked_windows.tsv`
 
 **TRY.** read filter_audit.tsv top-to-bottom — it shows how many calls,
 windows and samples each filter removed. If the hypervariable step
@@ -1157,5 +1167,37 @@ line; the candidate_regions_iHS.tsv should hit those peaks.
 ---
 
 ## workflow/rules/04_figures.smk
+
+---
+
+## workflow/rules/04b_clonality.smk
+
+### `all_genotypes`
+
+The FULL sample set, as a keep-list.
+
+### `unique_genotypes`
+
+Collapse each clonal group to one representative; write both keep-lists.
+
+---
+
+## workflow/rules/07_declonalization.smk
+
+### `declonalization_comparison`
+
+Full-vs-unique key numbers for one stage, side by side.
+
+### `plot_declonalization_comparison`
+
+One dumbbell panel per stage: how far each metric moved.
+
+---
+
+## workflow/rules/99_report.smk
+
+### `render_report`
+
+Render the cohort-agnostic HTML report.
 
 ---

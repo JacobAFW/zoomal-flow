@@ -145,7 +145,7 @@ correct — not as a result about *P. knowlesi*.
 | 4b IBD figures      | `workflow/rules/04_figures.smk`     | implemented |
 | 5  introgression    | `workflow/rules/05_introgression.smk` | implemented (see below) |
 | 6  selection (iHS)  | `workflow/rules/06_selection.smk`   | implemented |
-| Quarto report       | —                                    | later increment |
+| 7  report           | `workflow/rules/99_report.smk`      | implemented |
 
 Stage 0 produces: `outputs/setup/vcf_samples.txt`, `nuclear_contigs.txt`,
 `contig_map.tsv`, and a canonical role-renamed `outputs/metadata/samples.tsv`.
@@ -264,6 +264,39 @@ changes no defaults — picking a rule is a judgement call, and the sweep is the
 evidence for making it.
 
 ---
+
+## The report
+
+One HTML document that assembles whatever the pipeline actually produced:
+
+```bash
+pixi run snakemake --configfile config/config.yaml report --cores 8
+```
+
+It lands at `{paths.reports}/report.html`, self-contained — every figure is
+embedded, so the single file can be emailed or archived on its own.
+
+It is **role- and config-driven, with no cohort narrative in it**. Titles come
+from `cohort.name`; which sections exist is decided by which roles you mapped,
+which stages your config switched on, and which output files are actually on
+disk. Cluster names, cluster-pair names, focal-group names and model names are
+read at render time, never written in.
+
+A stage that did not run is reported as a short note saying *why* and what
+would enable it — the same graceful degradation the rules follow. Unset
+`metadata.roles.date` and the clonal timeline becomes "no collection dates to
+plot against", not a gap or a crash.
+
+Wherever the `{sampleset}` axis applies, the **full and de-clonalized arms are
+shown side by side**, and the full-vs-de-clonalized comparison tables get their
+own section. That comparison is the point: a claim that looks the same in both
+arms survives de-clonalization, and one that changes did not.
+
+`report` is a named target rather than part of `all`, so an existing cohort's
+run does not acquire a hard dependency on quarto, and re-rendering after an
+edit does not make the pipeline look out of date. Depending on it pulls the
+whole pipeline anyway.
+
 
 ## Configuration
 

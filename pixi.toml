@@ -85,6 +85,13 @@ r-igraph = ">=2.3,<3"         # clonal_clusters.R, plot_ibd_connectivity.R
 r-quantreg = ">=6.1,<7"
 r-mgcv = ">=1.9,<2"
 
+# Stage 7 report. Quarto drives R through knitr; both arrive transitively via
+# the tidyverse/quarto stack, but the report depends on them directly, so they
+# are pinned directly rather than left to chance on a future re-solve.
+r-knitr = ">=1.50,<2"
+r-rmarkdown = ">=2.30,<3"
+r-yaml = ">=2.3,<3"
+
 # bootstrappers for the four packages conda cannot supply (see env/postinstall.sh)
 r-biocmanager = ">=1.30,<2"
 r-remotes = ">=2.5,<3"

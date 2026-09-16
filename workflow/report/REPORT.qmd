@@ -1,0 +1,684 @@
+---
+params:
+  config: "config/config.yaml"
+  root: ""
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    embed-resources: true
+    fig-align: center
+    tbl-cap-location: top
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+#| include: false
+# ---------------------------------------------------------------------------
+# workflow/report/REPORT.qmd — the cohort-agnostic run report.
+#
+# This document contains NO cohort-specific content. Everything it says comes
+# from (a) the active config and (b) which output files the run actually
+# produced. Cluster names, group names, pair names and role columns are read
+# at render time, never written in. A stage that did not run gets a short note
+# saying why — the same graceful-degradation discipline the rules follow.
+#
+# Rendered by `snakemake --configfile <cfg> report`; see
+# workflow/rules/99_report.smk, which passes the config path and repo root in
+# as Quarto parameters.
+# ---------------------------------------------------------------------------
+suppressPackageStartupMessages({
+  library(yaml)
+  library(knitr)
+})
+
+`%||%` <- function(a, b) {
+  if (is.null(a) || length(a) == 0) return(b)
+  if (length(a) == 1 && is.na(a)) return(b)
+  a
+}
+
+CFG_PATH <- normalizePath(params$config, mustWork = TRUE)
+CFG      <- yaml::read_yaml(CFG_PATH)
+
+# Config paths are relative to the workspace root — the directory the pipeline
+# runs from — not to this file. The rule passes it explicitly; the fallback
+# only covers running this document by hand.
+ROOT <- if (nzchar(params$root %||% "")) {
+  normalizePath(params$root, mustWork = TRUE)
+} else {
+  normalizePath(dirname(dirname(CFG_PATH)), mustWork = TRUE)
+}
+
+abspath <- function(p) {
+  if (is.null(p) || length(p) == 0 || is.na(p) || !nzchar(p)) return(NA_character_)
+  if (startsWith(p, "/")) p else file.path(ROOT, p)
+}
+relpath <- function(p) sub(paste0("^", ROOT, "/"), "", p)
+
+OUT         <- abspath(CFG$paths$outputs)
+REP         <- abspath(CFG$paths$reports)
+COHORT_NAME <- CFG$cohort$name %||% "cohort"
+INPUT_TYPE  <- CFG$cohort$input_type %||% "unknown"
+
+# Roles: the analytical column map. Which roles are set decides which
+# role-driven sections can exist at all.
+ROLES    <- CFG$metadata$roles %||% list()
+role_col <- function(r) {
+  v <- ROLES[[r]]
+  if (is.null(v) || length(v) == 0 || is.na(v)) NA_character_ else as.character(v)
+}
+has_role <- function(r) !is.na(role_col(r))
+
+# The {sampleset} axis. Both arms are built whenever clonality.declonalize is
+# on, and wherever a result exists for both this report shows them side by
+# side rather than picking one — the comparison is the point.
+DECLONALIZE <- isTRUE(CFG$clonality$declonalize %||% TRUE)
+ARMS        <- c("full", if (DECLONALIZE) "unique")
+ARM_LABEL   <- c(full   = "full — every sample",
+                 unique = "unique — one per clonal group")
+
+# --- existence helpers -----------------------------------------------------
+have <- function(p) {
+  length(p) == 1 && !is.na(p) && file.exists(p) && file.size(p) > 0
+}
+out <- function(...) file.path(OUT, ...)
+fig <- function(...) file.path(REP, "figures", ...)
+
+# --- markdown emitters (called from results='asis' chunks) -----------------
+md <- function(...) cat(paste0(...), "\n\n", sep = "")
+
+note <- function(...) {
+  md("::: {.callout-note appearance=\"simple\"}")
+  md("**Not in this run.** ", ...)
+  md(":::")
+}
+
+# Images go in as base64 data URIs rather than as paths. `embed-resources`
+# alone is not enough: pandoc resolves an absolute image path relative to its
+# resource path and ends up looking for "./Users/...", so every figure silently
+# fails to embed and the report ships with broken images. A data URI has no
+# path to resolve, so it works wherever the document is rendered from — and the
+# result is genuinely one self-contained file.
+img_uri <- function(path) {
+  tryCatch(knitr::image_uri(path), error = function(e) NA_character_)
+}
+
+emit_fig <- function(path, caption = "", width = "100%") {
+  if (!have(path)) return(invisible(FALSE))
+  uri <- img_uri(path)
+  if (is.na(uri)) return(invisible(FALSE))
+  md("![", caption, "](", uri, "){width=", width, "}")
+  invisible(TRUE)
+}
+
+# Side-by-side figures for the two sample-set arms. `builder` maps an arm name
+# to a path; whichever arms exist are rendered, and a lone arm goes full width.
+emit_fig_arms <- function(builder, caption) {
+  paths   <- vapply(ARMS, builder, character(1))
+  present <- ARMS[vapply(paths, have, logical(1))]
+  if (length(present) == 0) return(invisible(FALSE))
+  if (length(present) == 1) {
+    u <- img_uri(paths[[present]])
+    if (is.na(u)) return(invisible(FALSE))
+    md("![", caption, " (", ARM_LABEL[[present]], ")](", u, "){width=100%}")
+  } else {
+    md("::: {layout-ncol=", length(present), "}")
+    for (a in present) {
+      u <- img_uri(paths[[a]])
+      if (!is.na(u)) md("![", ARM_LABEL[[a]], "](", u, "){width=100%}")
+    }
+    md(":::")
+    md("*", caption, ".*")
+  }
+  invisible(TRUE)
+}
+
+read_tsv_safe <- function(path) {
+  if (!have(path)) return(NULL)
+  tryCatch(
+    utils::read.delim(path, sep = "\t", header = TRUE, check.names = FALSE,
+                      stringsAsFactors = FALSE, comment.char = "", quote = ""),
+    error = function(e) NULL
+  )
+}
+
+emit_tbl <- function(path, caption = NULL, n = 15) {
+  d <- read_tsv_safe(path)
+  if (is.null(d) || nrow(d) == 0) return(invisible(FALSE))
+  total <- nrow(d)
+  print(knitr::kable(utils::head(d, n), caption = caption,
+                     format = "pipe", row.names = FALSE))
+  cat("\n\n")
+  if (total > n)
+    md("*Showing ", n, " of ", format(total, big.mark = ","),
+       " rows. Full table: `", relpath(path), "`.*")
+  invisible(TRUE)
+}
+
+emit_df <- function(d, caption = NULL) {
+  if (is.null(d) || nrow(d) == 0) return(invisible(FALSE))
+  print(knitr::kable(d, caption = caption, format = "pipe", row.names = FALSE))
+  cat("\n\n")
+  invisible(TRUE)
+}
+
+count_lines <- function(path, header = TRUE) {
+  if (!have(path)) return(NA_integer_)
+  n <- length(readLines(path, warn = FALSE))
+  if (header) max(n - 1L, 0L) else n
+}
+fmt <- function(x) if (is.na(x)) "—" else format(x, big.mark = ",")
+
+# Cluster, pair and model names are DERIVED, never hardcoded — they come from
+# whatever this run's labelling produced.
+clusters_for <- function(arm) {
+  d <- read_tsv_safe(out("structure", arm, "admix_clusters.tsv"))
+  if (is.null(d) || !("Cluster" %in% names(d))) return(character(0))
+  sort(unique(as.character(d$Cluster)))
+}
+CLUSTERS <- clusters_for("full")
+
+pairs_for <- function(arm) {
+  d <- out("introgression", arm, "pairs")
+  if (!dir.exists(d)) return(character(0))
+  sort(sub("\\.tsv$", "", basename(list.files(d, pattern = "\\.tsv$"))))
+}
+
+FOCAL            <- CFG$introgression$focal_group %||% NA_character_
+SELECTION_MODELS <- CFG$selection$models %||% list()
+```
+
+```{r title}
+#| results: asis
+md("# ", COHORT_NAME, " — population genetics report")
+md("Generated ", format(Sys.time(), "%Y-%m-%d %H:%M"), " by **ZOOMAL-Flow** from `",
+   relpath(CFG_PATH), "`.")
+md("Every section is assembled from what this run actually produced. Stages that ",
+   "did not run are marked rather than omitted, and group, cluster and column names ",
+   "are read from your config and your outputs — nothing here is written for a ",
+   "particular cohort.")
+```
+
+## Overview
+
+```{r overview}
+#| results: asis
+n_var <- if (have(out("qc", "variant_count.txt")))
+  trimws(readLines(out("qc", "variant_count.txt"), warn = FALSE)[1]) else NA_character_
+
+emit_df(data.frame(
+  Quantity = c("Cohort", "Input type", "Samples in the VCF", "Samples with metadata",
+               "Samples after control filtering", "Variants after QC",
+               "Samples into structure analysis", "Sample-set arms built"),
+  Value = c(COHORT_NAME, INPUT_TYPE,
+            fmt(count_lines(out("setup", "vcf_samples.txt"), header = FALSE)),
+            fmt(count_lines(out("metadata", "samples.tsv"))),
+            fmt(count_lines(out("qc", "keep_samples.txt"), header = FALSE)),
+            if (is.na(n_var)) "—" else n_var,
+            fmt(count_lines(out("structure", "full", "cleaned.fam"), header = FALSE)),
+            paste(ARMS, collapse = " + ")),
+  stringsAsFactors = FALSE, check.names = FALSE))
+```
+
+### Metadata roles
+
+The pipeline works off *roles*, not column names: you map your table's columns onto
+the analytical roles below, and any role you leave unset disables the analyses that
+depend on it instead of failing.
+
+```{r roles}
+#| results: asis
+role_effect <- c(
+  sample_id    = "required — identifies every sample",
+  group        = "group-faceted plots, group-based selection filters",
+  geography    = "geography facets, the map, geography summaries",
+  country      = "country facets and summaries",
+  host         = "recorded only; no analysis depends on it",
+  date         = "temporal analyses (the clonal-group timeline)",
+  case_control = "case/control contrasts in the selection scan"
+)
+emit_df(data.frame(
+  Role          = names(role_effect),
+  `Your column` = vapply(names(role_effect), function(r) {
+                    v <- role_col(r); if (is.na(v)) "—" else paste0("`", v, "`") },
+                    character(1)),
+  Status        = vapply(names(role_effect),
+                         function(r) if (has_role(r)) "mapped" else "not set", character(1)),
+  Enables       = unname(role_effect),
+  check.names = FALSE, stringsAsFactors = FALSE))
+
+unset <- names(role_effect)[!vapply(names(role_effect), has_role, logical(1))]
+if (length(unset))
+  md("Unset in this run: ", paste0("`", unset, "`", collapse = ", "),
+     ". The analyses those drive are skipped below.")
+```
+
+### Clonality handling
+
+```{r clonality-note}
+#| results: asis
+if (DECLONALIZE) {
+  md("Clonal samples are near-identical genotypes. Counting each as independent ",
+     "evidence is pseudo-replication, and it biases anything that is fundamentally a ",
+     "frequency or a count — allele frequencies, ancestry proportions, per-group ",
+     "polyclonality rates, introgression window support. So every frequency stage is ",
+     "built **twice**:")
+  md("- **full** — every sample. The operational backbone: clonal detection and the ",
+     "cluster definitions key off this arm.")
+  md("- **unique** — one representative per clonal group, plus every sample that is in ",
+     "no clonal group. The comparison arm.")
+  md("Wherever a result exists for both, this report shows them side by side. A claim ",
+     "that looks the same in both arms survives de-clonalization; one that changes did ",
+     "not. See [Full vs de-clonalized](#full-vs-de-clonalized) for the numbers.")
+} else {
+  note("`clonality.declonalize` is **false**, so only the `full` sample set was built ",
+       "and there is no de-clonalized comparison. Frequency-based results below ",
+       "therefore count clonal replicates as independent samples.")
+}
+```
+
+## Quality control
+
+```{r qc}
+#| results: asis
+qc_figs <- list(
+  c("maf_density_overall.png",     "Minor-allele-frequency distribution across retained variants"),
+  c("maf_density_by_chrom.png",    "Minor-allele frequency per contig"),
+  c("miss_density_per_sample.png", "Missing-genotype rate per sample"),
+  c("miss_density_per_variant.png","Missing-genotype rate per variant")
+)
+any_qc <- FALSE
+for (f in qc_figs) if (emit_fig(fig(f[1]), f[2])) any_qc <- TRUE
+
+if (!any_qc) {
+  note("No QC figures were produced. These are generated on the WGS path; ",
+       "`cohort.input_type` here is `", INPUT_TYPE, "`.")
+} else {
+  md("These are the sanity check before anything is interpreted. A missingness ",
+     "distribution with a long right tail means samples or sites are being carried ",
+     "that the structure-stage thresholds (`structure.max_sample_missing` = ",
+     CFG$structure$max_sample_missing %||% "—", ", `structure.max_variant_missing` = ",
+     CFG$structure$max_variant_missing %||% "—", ") will later drop.")
+}
+```
+
+## Multiplicity of infection
+
+```{r moi-intro}
+#| results: asis
+if (have(out("moi", "fws_MOI.tsv"))) {
+  md("**F~ws~** measures how much genetic diversity a single infection contains ",
+     "relative to the population it came from. It runs from 0 to 1: near 1 means the ",
+     "infection is effectively one clone, and lower values mean several distinct ",
+     "parasite genotypes are present in the one host — a *polyclonal* infection. It is ",
+     "estimated from within-sample allele balance, so it needs allele-depth data, not ",
+     "just genotype calls.")
+  md("It matters here for a concrete reason: ADMIXTURE, PCA and IBD all assume one ",
+     "genotype per sample, so samples below `moi.fws_exclusion_cutoff` (",
+     CFG$moi$fws_exclusion_cutoff %||% "—", ") are excluded before those stages.")
+  md("F~ws~ was scored for **", fmt(count_lines(out("moi", "fws_MOI.tsv"))),
+     "** samples; **", fmt(count_lines(out("moi", "exclude_high_moi.txt"), header = FALSE)),
+     "** were excluded as too polyclonal. (`moi.fws_polyclonal_cutoff` = ",
+     CFG$moi$fws_polyclonal_cutoff %||% "—",
+     " is the separate, higher threshold used only for *reporting* polyclonality rates.)")
+} else {
+  note("The MOI stage produced no `fws_MOI.tsv`.")
+}
+```
+
+```{r moi-figs}
+#| results: asis
+for (r in c("country", "geography")) {
+  if (!has_role(r)) next
+  emit_fig(fig(paste0("fws_density_by_", r, ".png")),
+           paste0("F~ws~ distribution by ", r, " (role column `", role_col(r), "`)"))
+}
+```
+
+```{r moi-tables}
+#| results: asis
+if (!has_role("country") && !has_role("geography")) {
+  note("Neither the `country` nor the `geography` role is mapped, so there are no ",
+       "grouped polyclonality summaries. F~ws~ is still scored per sample.")
+} else {
+  for (r in c("country", "geography")) {
+    if (!has_role(r)) next
+    for (a in ARMS) {
+      emit_tbl(out("moi", a, paste0("fws_by_", r, ".tsv")),
+               caption = paste0("Polyclonality by ", r, " — ", ARM_LABEL[[a]]), n = 20)
+    }
+  }
+  if (DECLONALIZE)
+    md("The two arms are shown one after the other. A per-group polyclonality rate ",
+       "that moves between them was being driven by clonal replicates within that group.")
+}
+```
+
+## Population structure
+
+```{r structure-intro}
+#| results: asis
+if (!length(CLUSTERS)) {
+  note("No `admix_clusters.tsv` was found, so the structure stage did not complete.")
+} else {
+  md("Three complementary views of one question — how do these samples group ",
+     "genetically? **ADMIXTURE** models each sample as a mixture of *K* ancestral ",
+     "populations and reports the proportions. **PCA** projects the genotypes onto the ",
+     "axes of greatest variation, with no population model behind it. A ",
+     "**neighbour-joining tree** summarises the pairwise genetic-distance matrix. They ",
+     "should broadly agree; where they disagree, understand why before going further.")
+  md("Clusters recovered in this run: ", paste0("`", CLUSTERS, "`", collapse = ", "),
+     " (labelling mode `", CFG$structure$cluster_labelling %||% "—", "`).")
+}
+```
+
+```{r structure-k}
+#| results: asis
+if (length(CLUSTERS)) {
+  krows <- do.call(rbind, lapply(ARMS, function(a) {
+    bk <- out("structure", a, "best_k.txt")
+    if (!have(bk)) return(NULL)
+    cv <- read_tsv_safe(out("structure", a, "admixture", "cv_error.tsv"))
+    data.frame(
+      `Sample set`      = unname(ARM_LABEL[[a]]),
+      `Selected K`      = trimws(readLines(bk, warn = FALSE)[1]),
+      `K scanned`       = if (!is.null(cv)) paste0(min(cv[[1]]), "–", max(cv[[1]])) else "—",
+      `Lowest CV error` = if (!is.null(cv)) sprintf("%.5f", min(cv[[2]])) else "—",
+      check.names = FALSE, stringsAsFactors = FALSE)
+  }))
+  emit_df(krows, "Model selection: K chosen by cross-validation error")
+  md("Cross-validation error is a model-selection *diagnostic*, not a test. The K with ",
+     "the lowest CV error is the most defensible choice, but the curve is often flat ",
+     "near its minimum, and ADMIXTURE's threaded cross-validation is not ",
+     "bit-reproducible run to run. Treat small differences in CV error as noise rather ",
+     "than as evidence for one K over its neighbour.")
+  emit_fig_arms(function(a) fig(a, "admixture_cv.png"), "Cross-validation error against K")
+}
+```
+
+```{r structure-figs}
+#| results: asis
+if (length(CLUSTERS)) {
+  emit_fig_arms(function(a) fig(a, "admixture_bars.png"),
+                "ADMIXTURE ancestry proportions per sample at the selected K")
+  for (r in c("country", "geography")) {
+    if (!has_role(r)) next
+    local({
+      rr <- r
+      emit_fig_arms(function(a) fig(a, paste0("admixture_bars_by_", rr, ".png")),
+                    paste0("Ancestry proportions faceted by ", rr,
+                           " (role column `", role_col(rr), "`)"))
+    })
+  }
+  emit_fig_arms(function(a) fig(a, "pca.png"), "Principal components, coloured by cluster")
+  if (has_role("geography"))
+    emit_fig_arms(function(a) fig(a, "pca_by_geography.png"),
+                  paste0("Principal components, coloured by `", role_col("geography"), "`"))
+  emit_fig_arms(function(a) fig(a, "njt.png"),
+                "Neighbour-joining tree of pairwise genetic distance")
+}
+```
+
+```{r structure-sizes}
+#| results: asis
+if (length(CLUSTERS)) {
+  sizes <- do.call(rbind, lapply(ARMS, function(a) {
+    d <- read_tsv_safe(out("structure", a, "admix_clusters.tsv"))
+    if (is.null(d) || !("Cluster" %in% names(d))) return(NULL)
+    tb <- as.data.frame(table(d$Cluster), stringsAsFactors = FALSE)
+    names(tb) <- c("Cluster", "n")
+    data.frame(`Sample set` = unname(ARM_LABEL[[a]]), tb,
+               check.names = FALSE, stringsAsFactors = FALSE)
+  }))
+  emit_df(sizes, "Cluster membership, by sample set")
+}
+```
+
+```{r structure-map}
+#| results: asis
+if (!emit_fig(fig("province_map.png"),
+              paste0("Sample origins by `", role_col("geography") %||% "geography", "`"))) {
+  if (is.null(CFG$metadata$gis))
+    note("No map: `metadata.gis` is not set, so there are no per-sample coordinates to ",
+         "place. Point it at a table with sample-ID, latitude and longitude columns to ",
+         "enable it.")
+}
+```
+
+## Identity by descent and clonality
+
+```{r ibd-intro}
+#| results: asis
+cc <- out("ibd", "clonal_clusters.tsv")
+if (have(cc)) {
+  md("Two samples are **identical by descent** (IBD) over a genomic segment when they ",
+     "inherited it from a shared ancestor. hmmIBD walks each pair along the genome with ",
+     "a hidden Markov model and reports the fraction of sites in an IBD state. Pairs ",
+     "above `ibd.clonal_ibd_threshold` (", CFG$ibd$clonal_ibd_threshold %||% "—",
+     ") are treated as the same clonal genotype, and connected components of those pairs ",
+     "form clonal groups.")
+  md("IBD is computed **within** each cluster — the model assumes a single population's ",
+     "allele frequencies — and only for clusters with at least `ibd.min_cluster_n` (",
+     CFG$ibd$min_cluster_n %||% "—", ") members.")
+} else {
+  note("No IBD output was found: the stage did not run, or no cluster reached ",
+       "`ibd.min_cluster_n` (", CFG$ibd$min_cluster_n %||% "—", ") members.")
+}
+```
+
+```{r ibd-tables}
+#| results: asis
+audit <- out("clonality", "declonalization_audit.tsv")
+ad <- read_tsv_safe(audit)
+if (!is.null(ad) && nrow(ad) > 0) {
+  emit_tbl(audit, "Clonal groups, with the representative retained in the `unique` arm", n = 25)
+  if ("straddles_clusters" %in% names(ad)) {
+    n_str <- sum(tolower(as.character(ad$straddles_clusters)) %in% c("true", "yes", "1"),
+                 na.rm = TRUE)
+    if (n_str > 0)
+      md("**", n_str, " clonal group(s) straddle more than one cluster.** Worth a look: ",
+         "near-identical genotypes landing in different clusters usually means either a ",
+         "cluster boundary in the wrong place or duplicated material in the cohort.")
+  }
+} else if (have(audit)) {
+  md("**No clonal groups were detected** at the configured threshold. The `unique` arm ",
+     "is therefore identical to `full`, and every difference between the two arms below ",
+     "should be nil — which is itself worth confirming rather than assuming.")
+} else if (DECLONALIZE) {
+  md("No clonality audit table was written.")
+}
+```
+
+```{r ibd-figs}
+#| results: asis
+conn <- if (dir.exists(fig()))
+  list.files(fig(), pattern = "^ibd_connectivity_.*\\.png$", full.names = TRUE) else character(0)
+if (length(conn)) {
+  md("Each panel is one cluster's IBD network: nodes are samples, edges join pairs ",
+     "sharing more IBD than the plotting threshold. Dense cliques are clonal expansions; ",
+     "isolated nodes are unrelated infections.")
+  for (p in sort(conn))
+    emit_fig(p, paste0("IBD connectivity — cluster `",
+                       sub("^ibd_connectivity_(.*)\\.png$", "\\1", basename(p)), "`"))
+}
+
+if (has_role("date")) {
+  emit_fig(fig("clonal_temporal.png"),
+           paste0("Clonal groups over time (role column `", role_col("date"), "`)"))
+} else {
+  note("No clonal timeline: the `date` role is not mapped, so there are no collection ",
+       "dates to plot clonal groups against.")
+}
+```
+
+## Introgression
+
+```{r intro-intro}
+#| results: asis
+have_intro <- any(vapply(ARMS,
+  function(a) have(out("introgression", a, "windows_by_cluster.tsv")), logical(1)))
+
+if (!have_intro) {
+  note("The introgression stage produced no window tables: it did not run, or no cluster ",
+       "reached `introgression.min_cluster_n` (",
+       CFG$introgression$min_cluster_n %||% "—", ").")
+} else {
+  md("This stage asks, per genomic window: does a sample carry the genetic signature of ",
+     "a cluster *other* than the one it is assigned to? It works per cluster pair, ",
+     "measuring each sample-window's distance to both clusters' consensus alleles and ",
+     "flagging windows where a sample sits in the other cluster's territory rather than ",
+     "its own.")
+  ps <- pairs_for("full")
+  md("Window size ", fmt(CFG$introgression$window_size_bp %||% NA), " bp; at least ",
+     CFG$introgression$min_snps_per_window %||% "—", " SNPs per window; detection rule `",
+     CFG$introgression$detection_rule %||% "—", "`.",
+     if (length(ps)) paste0(" Cluster pairs compared: ",
+                            paste0("`", ps, "`", collapse = ", "), ".") else "")
+  md("::: {.callout-important}")
+  md("## Cluster-level and focal-level are separate questions")
+  md("They are two tests at two scales, each with its own null. The cluster-level support ",
+     "floor should be **derived by permutation on this cohort** against an explicit FDR ",
+     "target — a number inherited from another study is not valid here. The focal test ",
+     "has its own size-preserving permutation null, scaled to the subgroup. A subgroup ",
+     "can never clear a floor calibrated on a cluster many times its size, so filtering ",
+     "the focal question through the cluster floor is a mis-posed test, not a threshold ",
+     "to tune. See `docs/introgression_analysis_spec.md`.")
+  md(":::")
+}
+```
+
+```{r intro-tables}
+#| results: asis
+if (have_intro) {
+  for (a in ARMS) {
+    p <- out("introgression", a, "windows_by_cluster.tsv")
+    if (!have(p)) next
+    md("**", ARM_LABEL[[a]], "** — ", fmt(count_lines(p)), " windows retained.")
+    emit_tbl(p, caption = paste0("Introgressed windows by cluster — ", ARM_LABEL[[a]]), n = 12)
+  }
+  emit_fig_arms(function(a) fig(a, "introgression_shoulder.png"),
+                "Per-sample introgression across the genome")
+}
+```
+
+```{r intro-focal}
+#| results: asis
+if (!is.na(FOCAL)) {
+  md("### Focal-group enrichment — `", FOCAL, "`")
+  md("This asks whether introgression in a window is **enriched** in the focal subgroup ",
+     "relative to the rest of its own cluster, under a size-preserving label permutation ",
+     "with Benjamini–Hochberg control at FDR ", CFG$introgression$focal_fdr %||% "—",
+     ". This is the testable focal claim — cite this table.")
+  for (a in ARMS) {
+    p <- out("introgression", a, paste0("focal_", FOCAL, "_enriched_windows.tsv"))
+    if (!have(p)) next
+    if (count_lines(p) == 0)
+      md("**", ARM_LABEL[[a]], "** — no windows reached significance.")
+    else
+      emit_tbl(p, caption = paste0("Enriched windows in `", FOCAL, "` — ", ARM_LABEL[[a]]), n = 15)
+  }
+  emit_fig_arms(function(a) fig(a, paste0("introgression_focal_", FOCAL, ".png")),
+                paste0("Focal enrichment — `", FOCAL, "`"))
+  if (DECLONALIZE)
+    md("Compare the arms directly. A focal result present in `full` and absent in ",
+       "`unique` was carried by clonal replicates rather than by independent infections, ",
+       "and does not survive de-clonalization.")
+  md("::: {.callout-warning}")
+  md("## The `unique_windows_in_", FOCAL, "_*.tsv` table is descriptive only")
+  md("It is a raw set difference: no null, no p-value, no multiple-testing control, and ",
+     "a single background sample carrying a window removes it from the set. It is ",
+     "superseded by the enrichment table above and must not be cited as a result.")
+  md(":::")
+} else if (have_intro) {
+  note("`introgression.focal_group` is not set, so no focal-enrichment test ran. Set it ",
+       "to a value of the `", CFG$introgression$focal_role %||% "geography",
+       "` role to ask whether introgression is enriched in a particular subgroup.")
+}
+```
+
+## Selection
+
+```{r selection}
+#| results: asis
+if (length(SELECTION_MODELS) == 0) {
+  note("`selection.models` is empty, so no selection scan ran. An iHS scan needs a ",
+       "case/control contrast, which is a cohort-specific hypothesis — add a model with ",
+       "`case_filter` and `control_filter` expressions to enable it.")
+} else {
+  md("The **integrated haplotype score** (iHS) looks for alleles that rose in frequency ",
+     "fast enough to carry an unusually long haplotype with them — the signature of ",
+     "recent positive selection. One scan is run per contrast.")
+  for (m in SELECTION_MODELS) {
+    nm <- m$name
+    md("### ", nm)
+    md("Cases: `", m$case_filter, "` · Controls: `", m$control_filter, "`")
+    got <- FALSE
+    for (a in ARMS)
+      if (emit_tbl(out("selection", a, nm, "ihs_extreme_windows.tsv"),
+                   paste0("Candidate windows — ", ARM_LABEL[[a]]), n = 15)) got <- TRUE
+    local({
+      n <- nm
+      if (emit_fig_arms(function(a) fig(a, paste0("ihs_", n, ".png")),
+                        paste0("iHS scan — ", n))) got <<- TRUE
+    })
+    if (!got) md("No output was produced for this model.")
+  }
+}
+```
+
+## Full vs de-clonalized {#full-vs-de-clonalized}
+
+```{r comparison}
+#| results: asis
+if (!DECLONALIZE) {
+  note("Only the `full` arm was built (`clonality.declonalize: false`), so there is no ",
+       "comparison to show.")
+} else {
+  md("Each row is one quantity computed both ways. Large changes mark claims that were ",
+     "resting on clonal pseudo-replication; near-zero changes mark claims robust to it. ",
+     "This table is the reason both arms are built.")
+  any_cmp <- FALSE
+  for (stage in c("moi", "structure", "introgression", "selection"))
+    if (emit_tbl(out(stage, "declonalization_comparison.tsv"),
+                 caption = paste0("Full vs de-clonalized — ", stage, " stage"), n = 25))
+      any_cmp <- TRUE
+  if (!any_cmp) md("No comparison tables were written.")
+  emit_fig(fig("declonalization_comparison.png"), "Full vs de-clonalized, across stages")
+}
+```
+
+## Provenance
+
+```{r provenance}
+#| results: asis
+md("### Configuration")
+md("The full active config, so this report is self-describing:")
+cat("``` yaml\n", paste(readLines(CFG_PATH, warn = FALSE), collapse = "\n"), "\n```\n\n", sep = "")
+
+md("### Software")
+ver1 <- function(cmd, args = "--version") {
+  o <- suppressWarnings(tryCatch(
+    system2(cmd, args, stdout = TRUE, stderr = FALSE),
+    error = function(e) character(0), warning = function(w) character(0)))
+  if (length(o) == 0) "not found" else trimws(o[1])
+}
+emit_df(data.frame(
+  Tool    = c("R", "bcftools", "plink", "plink2", "snakemake", "quarto"),
+  Version = c(paste(R.version$major, R.version$minor, sep = "."),
+              ver1("bcftools"), ver1("plink"), ver1("plink2"),
+              ver1("snakemake"), ver1("quarto")),
+  stringsAsFactors = FALSE))
+
+md("R packages: ", paste(vapply(
+  c("tidyverse", "data.table", "SeqArray", "moimix", "rehh", "igraph", "ape"),
+  function(p) tryCatch(paste0("`", p, "` ", as.character(packageVersion(p))),
+                       error = function(e) paste0("`", p, "` (absent)")),
+  character(1)), collapse = ", "), ".")
+md("Environment: pinned by `pixi.toml` + `pixi.lock` — see `env/README.md`.")
+```

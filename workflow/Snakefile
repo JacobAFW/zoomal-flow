@@ -32,10 +32,27 @@ SCHEMA         = str(_AGNOSTIC / "config" / "schema" / "config.schema.yaml")
 
 configfile: DEFAULT_CONFIG
 
+# Which config file is the ACTIVE one?
+#
+# Snakemake orders `workflow.configfiles` as [--configfile entries..., entries
+# from the `configfile:` directive], so the DEFAULT_CONFIG declared above is
+# always LAST. Taking [-1] therefore validates the shipped template and never
+# the user's cohort config — which meant that, since every documented
+# invocation passes --configfile, schema validation was silently a no-op and an
+# invalid cohort config surfaced later as a confusing FileNotFoundError instead
+# of a clear schema error. Take the first entry that is not the default.
+def _active_configfile():
+    for c in workflow.configfiles:
+        if str(Path(c).resolve()) != str(Path(DEFAULT_CONFIG).resolve()):
+            return str(Path(c).resolve())
+    return str(Path(DEFAULT_CONFIG).resolve())
+
+
+ACTIVE_CONFIG = _active_configfile()
+
 # Validate up front — any required-key omission or bad input_type aborts the
 # workflow before the DAG is built. Errors are printed to stderr by the helper.
-load_and_validate(workflow.configfiles[-1] if workflow.configfiles else DEFAULT_CONFIG,
-                  SCHEMA)
+load_and_validate(ACTIVE_CONFIG, SCHEMA)
 
 # Convenience accessors used across rules.
 PATHS    = config["paths"]
@@ -325,9 +342,29 @@ if DECLONALIZE:
             f"{PATHS['outputs']}/selection/declonalization_comparison.tsv",
         ]
 
+# Stage 7 report. Included here, after FINAL_TARGETS is assembled, because the
+# report rule depends on it — `report` is a named target, not part of `all`.
+include: "rules/99_report.smk"
+
+
 rule all:
     input:
         FINAL_TARGETS
+
+
+rule report:
+    """
+    Convenience alias: `snakemake --configfile <cfg> report`.
+
+    WHAT: builds the whole pipeline, then renders {reports}/report.html
+    WHY:  `report` reads better at the command line than the output path, and
+          it gives the report a stable name if the path ever moves.
+    TUNABLES: (none — see render_report)
+    OUTPUT: {reports}/report.html
+    TRY:    snakemake --configfile examples/config.yaml report --cores 4
+    """
+    input:
+        f"{PATHS['reports']}/report.html",
 
 
 # --------------------------------------------------------------------------
