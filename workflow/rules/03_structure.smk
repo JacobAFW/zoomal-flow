@@ -81,8 +81,9 @@ rule admixture_run:
     the LD-pruned bfile from the prep seam. K values run in parallel via
     Snakemake's wildcard expansion.
 
-    WHAT: admixture --cv N --seed S cleaned.bed K  (staged in a per-stage dir
-          so .Q and .P land under outputs/structure/admixture/)
+    WHAT: admixture --cv N --seed S cleaned.bed K  (staged in a per-K dir so
+          concurrent K's never share a path; .Q and .P are then published to
+          outputs/structure/admixture/)
     WHY:  ADMIXTURE is the slide-7 ancestry-bar method. CV error vs K is
           the standard model-selection diagnostic.
     TUNABLES: structure.admixture_k_min/max, structure.admixture_cv_folds,
@@ -110,14 +111,33 @@ rule admixture_run:
         "[structure:{wildcards.sampleset}] ADMIXTURE K={wildcards.K}"
     shell:
         r"""
-        mkdir -p {params.admix_dir}
+        # Each K stages its input and runs in its OWN directory.
+        #
+        # ADMIXTURE takes its bfile from the working directory and writes
+        # cleaned.<K>.{{Q,P}} beside it, so every K used to stage over the same
+        # three filenames in {params.admix_dir}. With admixture_threads: 1 (set
+        # for CV determinism) `--cores 4` runs four K's at once, and they
+        # overwrite each other's staged cleaned.bed mid-read — an intermittent
+        # exit 255 that lands on the first run of a fresh clone and then hides.
+        # Per-K staging removes the shared mutable path; results are untouched.
+        work={params.admix_dir}/K{wildcards.K}
+        mkdir -p "$work"
         for ext in bed bim fam; do
-            cp -f {params.ld_prefix}.$ext {params.admix_dir}/cleaned.$ext
+            cp -f {params.ld_prefix}.$ext "$work/cleaned.$ext"
         done
-        ( cd {params.admix_dir} && \
+
+        ( cd "$work" && \
           admixture --cv={params.cv_folds} --seed={params.seed} \
                     -j{threads} cleaned.bed {wildcards.K} ) \
             > {output.log} 2>&1
+
+        # Publish to the paths downstream rules already expect.
+        mv "$work/cleaned.{wildcards.K}.Q" {output.Q}
+        mv "$work/cleaned.{wildcards.K}.P" {output.P}
+
+        # Drop the staged copies; targeted removal, no rm -rf on a derived path.
+        rm -f "$work"/cleaned.bed "$work"/cleaned.bim "$work"/cleaned.fam
+        rmdir "$work" 2>/dev/null || true
         """
 
 
