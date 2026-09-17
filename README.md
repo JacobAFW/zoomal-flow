@@ -66,20 +66,6 @@ The V1 Indonesia pipeline keeps its own `vvg-box` env under `../envs/`. Nothing 
 
 ---
 
-## What the repository contains, and what it leaves out
-
-Code only: workflow rules, scripts, schemas, docs. It does not track:
-
-- data of any kind (VCFs, reference FASTA/index, PLINK sets, tabular records)
-- the sample metadata table (`data/metadata/samples.tsv`), which carries individual-level fields under publication embargo
-- run artefacts (`outputs/`, `logs/`, `reports/`, `.snakemake/`)
-- credentials, tokens, environment files
-- the solved environment (`.pixi/`, about 2.2 GB); only `pixi.toml` and its `pixi.lock` are tracked
-
-`.gitignore` is default-deny across data, genomics, secret and sample-sheet patterns, so a stray input cannot be committed by accident. The public example under `examples/` is the one exception, un-ignored file by file.
-
----
-
 ## Stages
 
 | Stage | File | Status |
