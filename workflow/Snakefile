@@ -377,6 +377,10 @@ rule report:
 
 _WALKTHROUGH_SCRIPT = str(_AGNOSTIC / "scripts" / "py" / "render_walkthrough.py")
 _WALKTHROUGH_MD     = str(_AGNOSTIC / "docs" / "WALKTHROUGH.md")
+# The per-step folder is generated in the same pass as WALKTHROUGH.md. Declared
+# as a directory rather than a file list so adding or removing a stage does not
+# need a matching edit here — the stage list lives in the renderer alone.
+_STEPS_DIR          = str(_AGNOSTIC / "docs" / "steps")
 # The walkthrough is pinned to the worked-example config so the committed
 # copy is stable — TUNABLES resolve to the same values regardless of which
 # config was loaded for `snakemake` proper. A different cohort renders its
@@ -386,22 +390,25 @@ _WALKTHROUGH_CFG    = str(_AGNOSTIC / "config" / "cohort.example.yaml")
 
 rule walkthrough:
     """
-    Regenerate docs/WALKTHROUGH.md from the current rules + example config.
+    Regenerate docs/WALKTHROUGH.md + docs/steps/ from the rules + example config.
 
     WHAT: python scripts/py/render_walkthrough.py --write
     WHY:  The walkthrough is the single source of truth for the pipeline's
           human-readable narrative; DESIGN §6 requires that it always be
-          generatable from rule docstrings, never hand-edited.
+          generatable from rule docstrings, never hand-edited. The per-step
+          pages under docs/steps/ come out of the same pass, so the two
+          cannot describe different pipelines.
     TUNABLES: (none — pinned to config/cohort.example.yaml)
-    OUTPUT: docs/WALKTHROUGH.md
+    OUTPUT: docs/WALKTHROUGH.md + docs/steps/
     TRY:    change a rule's TRY line, rerun `snakemake walkthrough`, and
-            diff docs/WALKTHROUGH.md to confirm your edit propagated.
+            diff docs/ to confirm your edit propagated to both.
     """
     input:
         script = _WALKTHROUGH_SCRIPT,
         rules  = sorted(str(p) for p in (_AGNOSTIC / "workflow" / "rules").glob("*.smk")),
     output:
-        md = _WALKTHROUGH_MD,
+        md    = _WALKTHROUGH_MD,
+        steps = directory(_STEPS_DIR),
     log:
         f"{PATHS['logs']}/walkthrough.log",
     shell:
@@ -412,19 +419,22 @@ rule walkthrough:
 
 rule walkthrough_check:
     """
-    CI staleness check for docs/WALKTHROUGH.md.
+    CI staleness check for docs/WALKTHROUGH.md and docs/steps/.
 
     WHAT: python scripts/py/render_walkthrough.py --check
-    WHY:  If someone edits a rule's docstring without regenerating the
-          walkthrough, this rule fails so the drift shows up before merge.
+    WHY:  If someone edits a rule's docstring without regenerating the docs,
+          this rule fails so the drift shows up before merge. Covers every
+          generated file, and flags an orphan page under docs/steps/ that no
+          stage produces any more.
     TUNABLES: (none)
     OUTPUT: (no output — non-zero exit on stale)
-    TRY:    delete a line from docs/WALKTHROUGH.md and re-run — the check
-            should fail with a diff.
+    TRY:    delete a line from any file under docs/steps/ and re-run — the
+            check should fail with a diff naming that file.
     """
     input:
         script = _WALKTHROUGH_SCRIPT,
         md     = _WALKTHROUGH_MD,
+        steps  = _STEPS_DIR,
         rules  = sorted(str(p) for p in (_AGNOSTIC / "workflow" / "rules").glob("*.smk")),
     log:
         f"{PATHS['logs']}/walkthrough_check.log",

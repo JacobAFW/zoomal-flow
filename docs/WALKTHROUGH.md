@@ -3,8 +3,8 @@
 *Generated from `workflow/rules/*.smk` docstrings by `scripts/py/render_walkthrough.py`.*  
 *Do NOT hand-edit — regenerate via `snakemake walkthrough` or `python scripts/py/render_walkthrough.py --write`.*
 
-- Config: `config/config.yaml`
-- Commit: `b64b8f1-dirty`
+- Config: `config/cohort.example.yaml`
+- Commit: `00e58db-dirty`
 
 Each rule below carries a WHAT/WHY block, its resolved TUNABLES (current values from the config above), its OUTPUT path(s), and a TRY suggestion — a concrete experiment you can run by editing the config and re-invoking that stage's target.
 
@@ -28,7 +28,7 @@ if the VCF mtime moves past the index's.
 
 **TUNABLES.**
 
-- `cohort.vcf` = `'data/vcf/cohort.vcf.gz'`
+- `cohort.vcf` = `'data/vcf/merged_popgen.clean.vcf.gz'`
 
 **OUTPUT.** `<cohort.vcf>.csi`
 
@@ -50,7 +50,7 @@ here, avoids redundant VCF reads.
 
 **TUNABLES.**
 
-- `cohort.vcf` = `'data/vcf/cohort.vcf.gz'`
+- `cohort.vcf` = `'data/vcf/merged_popgen.clean.vcf.gz'`
 
 **OUTPUT.** `{outputs}/setup/vcf_samples.txt`
 
@@ -71,8 +71,8 @@ is the input later stages need for PLINK chromosome codes.
 
 **TUNABLES.**
 
-- `reference.fasta` = `'data/reference/reference.fasta'`
-- `reference.exclude_contigs` = `[]`
+- `reference.fasta` = `'data/reference/strain_A1_H.1.Icor.fasta'`
+- `reference.exclude_contigs` = `['MIT', 'API']`
 
 **OUTPUT.** `{outputs}/setup/nuclear_contigs.txt, {outputs}/setup/contig_map.tsv`
 
@@ -97,7 +97,7 @@ a note and let dependent analyses skip gracefully (DESIGN §3b).
 **TUNABLES.**
 
 - `metadata.table` = `'data/metadata/samples.tsv'`
-- `metadata.roles` = `{'sample_id': 'sample_id', 'group': None, 'geography': None, 'country': None, 'host': None, 'date': None, 'case_control': None}`
+- `metadata.roles` = `{'sample_id': 'Sample', 'group': 'Cluster', 'geography': 'State', 'country': 'Country', 'host': 'Host', 'date': 'EnrolDate', 'case_control': None}`
 
 **OUTPUT.** `{outputs}/metadata/samples.tsv`
 
@@ -149,7 +149,7 @@ relying on one being silently sitting on disk.
 
 **TUNABLES.**
 
-- `reference.exclude_contigs` = `[]`
+- `reference.exclude_contigs` = `['MIT', 'API']`
 - `controls.exclude_patterns` = `['ctrl', 'cpos', 'cneg']`
 
 **OUTPUT.** `{outputs}/qc/snps.nuclear.vcf.gz`
@@ -396,8 +396,9 @@ Run ADMIXTURE for a single K with --cv cross-validation. Operates on
 the LD-pruned bfile from the prep seam. K values run in parallel via
 Snakemake's wildcard expansion.
 
-**WHAT.** admixture --cv N --seed S cleaned.bed K  (staged in a per-stage dir
-so .Q and .P land under outputs/structure/admixture/)
+**WHAT.** admixture --cv N --seed S cleaned.bed K  (staged in a per-K dir so
+concurrent K's never share a path; .Q and .P are then published to
+outputs/structure/admixture/)
 
 **WHY.** ADMIXTURE is the slide-7 ancestry-bar method. CV error vs K is
 the standard model-selection diagnostic.
@@ -499,7 +500,7 @@ reference  — components labelled by majority group role
 
 **TUNABLES.**
 
-- `structure.cluster_labelling` = `'numbered'`
+- `structure.cluster_labelling` = `'reference'`
 - `structure.admixture_k`: *(not set in this config)*
 
 **OUTPUT.** `{outputs}/structure/admix_clusters.tsv
@@ -604,7 +605,7 @@ tool happy without re-normalisation.
 
 **TUNABLES.**
 
-- `reference.fasta` = `'data/reference/reference.fasta'`
+- `reference.fasta` = `'data/reference/strain_A1_H.1.Icor.fasta'`
 
 **OUTPUT.** `{outputs}/structure/snps.normalised.vcf.gz`
 
@@ -692,7 +693,7 @@ specific. The agnostic version takes the regex from config; null
 
 **TUNABLES.**
 
-- `structure.duplicate_id_pattern`: *(not set in this config)*
+- `structure.duplicate_id_pattern` = `'_DK.*'`
 
 **OUTPUT.** `{outputs}/structure/Pk.dups`
 
@@ -1022,7 +1023,7 @@ never returns.
 **TUNABLES.**
 
 - `ibd.clonal_ibd_threshold` = `0.95`
-- `ibd.focal_cluster`: *(not set in this config)*
+- `ibd.focal_cluster` = `'Peninsular'`
 
 **OUTPUT.** `{outputs}/ibd/clonal_clusters.tsv       (always)
 {outputs}/ibd/focal_<name>_clones.tsv    (only if
@@ -1104,9 +1105,9 @@ SICA|KIR grep, and skips itself with a logged note when no GFF is set.
 
 - `introgression.min_samples_per_window` = `2`
 - `introgression.per_cluster_min_pct` = `0`
-- `introgression.per_cluster_min_samples` = `3`
-- `introgression.gene_family_filters` = `[]`
-- `introgression.gff`: *(not set in this config)*
+- `introgression.per_cluster_min_samples` = `32`
+- `introgression.gene_family_filters` = `['SICA', 'KIR']`
+- `introgression.gff` = `'data/reference/PlasmoDB_version/PlasmoDB-68_PknowlesiA1H1.gff'`
 - `introgression.window_size_bp` = `10000`
 
 **OUTPUT.** `{outputs}/introgression/introgressed_windows_filtered.tsv,

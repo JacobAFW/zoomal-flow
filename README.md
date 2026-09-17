@@ -83,7 +83,7 @@ The V1 Indonesia pipeline keeps its own `vvg-box` env under `../envs/`. Nothing 
 | 6  selection (iHS)   | `workflow/rules/06_selection.smk`     | implemented |
 | 7  report            | `workflow/rules/99_report.smk`        | implemented |
 
-`docs/WALKTHROUGH.md`, generated from the rule docstrings, is the step-by-step tour of every rule, its tunables, and something to try at each step.
+Two generated guides cover the rules themselves, both rendered from the rule docstrings in one pass so they cannot disagree. `docs/WALKTHROUGH.md` is the whole pipeline as one continuous read. [`docs/steps/`](docs/steps/README.md) is the same material split one page per stage, plus the run mechanics: the command to run up to a given stage and stop, and — per rule — how to re-run just that step after changing a setting. Start there if you want to work through the pipeline a stage at a time, inspecting and adjusting as you go.
 
 ---
 
@@ -237,7 +237,7 @@ Drop the `pixi run` prefix if you are already inside `pixi shell`.
 ## Conventions for contributors
 
 - Do not modify anything outside this repository. The V1 Indonesia pipeline is frozen.
-- Every rule carries a structured docstring (a one-line summary plus a `WHAT/WHY/TUNABLES/OUTPUT/TRY` block). `render_walkthrough.py` parses these into `docs/WALKTHROUGH.md`, so keep them intact when editing rules.
+- Every rule carries a structured docstring (a one-line summary plus a `WHAT/WHY/TUNABLES/OUTPUT/TRY` block). `render_walkthrough.py` parses these into `docs/WALKTHROUGH.md` and `docs/steps/`, so keep them intact when editing rules. Run `snakemake walkthrough` after any docstring change; `snakemake walkthrough_check` fails on drift.
 - Graceful degradation: a missing optional metadata column disables its analysis with a logged note, never a crash.
 - Shared seam output: both the WGS and microhap QC paths terminate at `outputs/qc/snps.qc.vcf.gz`, so Stage 2 onward reads from one place and stays fork-free.
 

@@ -143,3 +143,6 @@ data_old_symlink
 # PlasmoDB (examples/README.md). Keep it ignored even though it sits here.
 examples/data/reference/*.fasta
 examples/data/reference/*.fasta.fai
+
+# Snakemake writes this into any directory() output (e.g. docs/steps/)
+.snakemake_timestamp
