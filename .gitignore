@@ -146,3 +146,11 @@ examples/data/reference/*.fasta.fai
 
 # Snakemake writes this into any directory() output (e.g. docs/steps/)
 .snakemake_timestamp
+
+# === Session-local scratch (never shared, never committed) ===
+.scratch/
+
+# === Cohort-specific exploratory analysis — never in the public pipeline ===
+# Indonesia-cohort drivers (hardcoded group labels by design). The generic
+# statistics are promoted as proper stages; these scripts are not promotable.
+scripts/exploratory/

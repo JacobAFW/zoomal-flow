@@ -236,17 +236,44 @@ if (STAGE == "structure") {
   }
 
 } else if (STAGE == "selection") {
-  # One row per model: candidate regions surviving the iHS thresholds.
+  # One row per model: how many markers reached the statistic in each arm, and
+  # how many candidate regions came out. The marker count comes FIRST because
+  # a candidate count without it is uninterpretable — the arms can differ in
+  # marker count for reasons that have nothing to do with selection.
   models <- union(list.dirs(FULL, recursive = FALSE, full.names = FALSE),
                   list.dirs(UNIQ, recursive = FALSE, full.names = FALSE))
   if (length(models) == 0) say("no selection models found under %s / %s", FULL, UNIQ)
+
+  # scan_summary.tsv carries one row per statistic; pull a named field from
+  # the XP-EHH row, which is the two-group test.
+  summary_field <- function(dir, m, field, stat = "XPEHH") {
+    f <- file.path(dir, m, "scan_summary.tsv")
+    if (!file.exists(f)) return(NA_real_)
+    d <- tryCatch(utils::read.delim(f, sep = "\t", header = TRUE,
+                                    stringsAsFactors = FALSE),
+                  error = function(e) NULL)
+    if (is.null(d) || !("statistic" %in% names(d)) || !(field %in% names(d))) {
+      return(NA_real_)
+    }
+    row <- d[d$statistic == stat, , drop = FALSE]
+    if (nrow(row) == 0) return(NA_real_)
+    suppressWarnings(as.numeric(row[[field]][1]))
+  }
+
   for (m in models) {
-    add(sprintf("n_candidate_regions[%s]", m),
-        n_rows(file.path(FULL, m, "candidate_regions_iHS.tsv")),
-        n_rows(file.path(UNIQ, m, "candidate_regions_iHS.tsv")), scope = "model")
-    add(sprintf("n_ihs_markers[%s]", m),
-        n_rows(file.path(FULL, m, "ihs_table.tsv")),
-        n_rows(file.path(UNIQ, m, "ihs_table.tsv")), scope = "model")
+    add(sprintf("markers_scanned[%s]", m),
+        summary_field(FULL, m, "markers_scanned"),
+        summary_field(UNIQ, m, "markers_scanned"), scope = "model")
+    add(sprintf("n_xpehh_markers[%s]", m),
+        summary_field(FULL, m, "markers"),
+        summary_field(UNIQ, m, "markers"), scope = "model")
+    add(sprintf("n_candidate_regions_XPEHH[%s]", m),
+        n_rows(file.path(FULL, m, "candidate_regions_XPEHH.tsv")),
+        n_rows(file.path(UNIQ, m, "candidate_regions_XPEHH.tsv")),
+        scope = "model")
+    add(sprintf("xpehh_kurtosis[%s]", m),
+        summary_field(FULL, m, "kurtosis"),
+        summary_field(UNIQ, m, "kurtosis"), scope = "model")
   }
 
 } else {

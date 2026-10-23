@@ -4,7 +4,7 @@
 
 - Step 7 of 8 · [index](README.md) · previous: [Stage 5 — Introgression](05_introgression.md) · next: [Stage 7 — Comparison tables and the report](07_report.md)
 - Config the TUNABLES below were resolved from: `config/cohort.example.yaml`
-- Commit: `00e58db-dirty`
+- Commit: `d6a788e-dirty`
 
 ## What this stage does
 
@@ -12,7 +12,7 @@ Runs the rehh iHS scan for each case/control model declared in the config. With 
 
 **Needs from before it.** Stage 3's phased/cleaned genotypes and cluster labels.
 
-Rules: `run_rehh_ihs`, `plot_ihs_scan`
+Rules: `run_selection_scan`, `plot_selection_scan`
 
 ## Running it
 
@@ -23,7 +23,7 @@ Run this stage and everything it depends on, then stop:
 ```bash
 pixi run snakemake --configfile config/config.yaml \
     --cores 4 \
-    outputs/selection/full/Aceh_vs_other_Peninsular/ihs_scan.png
+    reports/figures/full/selection_Aceh_vs_other_Peninsular_scan.png
 ```
 
 Those are this stage's own output files. Asking for files rather than `--until <rule>` is deliberate: `--until` cannot cross the `assign_clusters` checkpoint and deadlocks on any stage downstream of it. Snakemake builds only the part of the graph these files need, so work through the stages in order and each command picks up where the last one stopped.
@@ -35,7 +35,7 @@ Re-run this whole stage — after editing a threshold in the config, say — and
 ```bash
 pixi run snakemake --configfile config/config.yaml \
     --cores 4 \
-    --forcerun run_rehh_ihs plot_ihs_scan
+    --forcerun run_selection_scan plot_selection_scan
 ```
 
 That re-runs the stage *and everything downstream of it*, which is usually what a changed threshold requires. To redo a single step without touching the rest, each rule below carries a `--force <file>` command that does only that job.
@@ -44,61 +44,79 @@ That re-runs the stage *and everything downstream of it*, which is usually what 
 
 ## The steps
 
-### `run_rehh_ihs`
+### `run_selection_scan`
 
 <sub>`workflow/rules/06_selection.smk`</sub>
 
-Per-model whole-genome iHS scan via rehh. Single-threaded — rehh's
-`data2haplohh` / `scan_hh` do not parallelise usefully on this scale.
+Per-model cross-population selection scan. REPLACED the iHS-only rule on
+2026-10-21; see CONTEXT-pipeline.md for the four defects that forced it.
 
-**WHAT.** scripts/R/run_rehh_ihs.R — subsets the combined Stage-4 VCF to
-case + control per the model's role-expression filters, splits
-by contig, accumulates a whole-genome scan, runs
-`calc_candidate_regions`. Emits empty (header-only) TSVs +
-a one-line summary on a negative result.
+**WHAT.** scripts/R/run_selection_scan.R — splits case and control per the
+model's role-expression filters, haploidises, scans each group
+SEPARATELY with rehh, then computes XP-EHH and Rsb for the
+two-group contrast and a within-population iHS per group.
 
-**WHY.** iHS detects loci under recent positive selection. Splitting by
-case/control lets the same machinery run any comparison the
-user cares about — no cohort hardcoding beyond the filter
-expression the user writes in config.
+**WHY.** iHS is a WITHIN-population statistic and cannot test a two-group
+contrast; the old rule pooled the two groups and scanned the pool,
+so the case/control split never entered the result. XP-EHH
+(ies2xpehh) and Rsb (ines2rsb) are the cross-population statistics
+that do.
+INPUT: the POST-QC SNP set, not the Stage-3 `cleaned` bfile. The cleaned
+bfile is filtered cohort-wide for ADMIXTURE and PCA and is roughly
+one marker per 6.5 kb, which is too sparse for EHH integration to
+complete — the old rule's scan was empty, not negative.
 
 **TUNABLES.**
 
-- `selection.ihs_threshold` = `4`
-- `selection.ihs_p_threshold` = `0.0001`
-- `selection.window_size_bp` = `10000`
-- `selection.window_overlap_bp` = `1000`
-- `selection.min_extr_markers` = `3`
+- `min_maf`: *(not set in this config)*
+- `max_het_rate`: *(not set in this config)*
+- `ihs_min_maf`: *(not set in this config)*
+- `threshold`: *(not set in this config)*
+- `window_size_bp`: *(not set in this config)*
+- `window_overlap_bp`: *(not set in this config)*
+- `min_extr_markers`: *(not set in this config)*
+- `and`: *(not set in this config)*
 
-**OUTPUT.** `{outputs}/selection/{model}/candidate_regions_iHS.tsv,
-{outputs}/selection/{model}/ihs_table.tsv,
-{outputs}/selection/{model}/ihs_summary.tsv`
+**OUTPUT.** `{outputs}/selection/{sampleset}/{model}/
+scan_summary.tsv        headline table, one row per statistic
+tail_diagnostics.tsv    kurtosis / max |z| / expected max /
+tail excess per statistic
+candidate_regions_{XPEHH,RSB,iHS_case,iHS_control}.tsv
+xpehh_table.tsv, rsb_table.tsv, ihs_{case,control}_table.tsv
+marker_manifest.tsv     markers in and out per contig
+READ THIS FIRST: `scan_summary.tsv` carries a `verdict` column per
+statistic. rehh standardizes to mean 0 / SD 1 and reads p-values off
+a normal; when two groups are similar that denominator collapses and
+trivial differences become extreme z-scores — a weakly-differentiated
+contrast can return hundreds of "candidate regions" that are
+artefacts of a vanishing denominator. A candidate count whose
+verdict is DEGENERATE means nothing.`
 
-**TRY.** add a second model to selection.models (e.g. a
-North-Kalimantan-vs-Sabah scan) and re-run — the rule
+**TRY.** add a second model to selection.models and re-run — the rule
 expands over the added name automatically.
 
 **Re-run just this step** — forces this one job and nothing else:
 
 ```bash
-pixi run snakemake --configfile config/config.yaml --cores 4 --force outputs/selection/full/Aceh_vs_other_Peninsular/candidate_regions_iHS.tsv
+pixi run snakemake --configfile config/config.yaml --cores 4 --force outputs/selection/full/Aceh_vs_other_Peninsular/scan_summary.tsv
 ```
 
 **Re-run it and everything downstream** — what you want after changing a setting this step depends on, because the results drawn from it are now stale too:
 
 ```bash
-pixi run snakemake --configfile config/config.yaml --cores 4 --forcerun run_rehh_ihs
+pixi run snakemake --configfile config/config.yaml --cores 4 --forcerun run_selection_scan
 ```
 
 ---
 
-### `plot_ihs_scan`
+### `plot_selection_scan`
 
 <sub>`workflow/rules/06_selection.smk`</sub>
 
 Genome-wide iHS scan + -log10(p) plot for a model.
 
-**WHAT.** scripts/R/plot_ihs_scan.R
+**WHAT.** scripts/R/plot_ihs_scan.R (generic: plots whatever standardized
+statistic column the table carries)
 
 **WHY.** The scan is the standard visualisation; alternating chromosome
 fills + 0.1% / 99.9% quantile dotted lines flag outliers.
@@ -114,13 +132,13 @@ line; the candidate_regions_iHS.tsv should hit those peaks.
 **Re-run just this step** — forces this one job and nothing else:
 
 ```bash
-pixi run snakemake --configfile config/config.yaml --cores 4 --force outputs/selection/full/Aceh_vs_other_Peninsular/ihs_scan.png
+pixi run snakemake --configfile config/config.yaml --cores 4 --force reports/figures/full/selection_Aceh_vs_other_Peninsular_scan.png
 ```
 
 **Re-run it and everything downstream** — what you want after changing a setting this step depends on, because the results drawn from it are now stale too:
 
 ```bash
-pixi run snakemake --configfile config/config.yaml --cores 4 --forcerun plot_ihs_scan
+pixi run snakemake --configfile config/config.yaml --cores 4 --forcerun plot_selection_scan
 ```
 
 ---

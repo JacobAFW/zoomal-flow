@@ -295,10 +295,11 @@ for _ss in SAMPLE_SETS:
 for _ss in SAMPLE_SETS:
     for _m in SELECTION_MODELS:
         FINAL_TARGETS += [
-            f"{PATHS['outputs']}/selection/{_ss}/{_m}/candidate_regions_iHS.tsv",
-            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_summary.tsv",
-            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_scan.png",
-            f"{PATHS['outputs']}/selection/{_ss}/{_m}/ihs_pvalue.png",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/scan_summary.tsv",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/tail_diagnostics.tsv",
+            f"{PATHS['outputs']}/selection/{_ss}/{_m}/candidate_regions_XPEHH.tsv",
+            f"{PATHS['reports']}/figures/{_ss}/selection_{_m}_scan.png",
+            f"{PATHS['reports']}/figures/{_ss}/selection_{_m}_pvalue.png",
         ]
 if COHORT["input_type"] == "wgs":
     FINAL_TARGETS += [

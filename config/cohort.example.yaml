@@ -156,7 +156,14 @@ selection:
     - name: "Aceh_vs_other_Peninsular"
       case_filter:    "group == 'Peninsular' & geography == 'Aceh'"
       control_filter: "group == 'Peninsular' & geography != 'Aceh'"
-  ihs_threshold:     4
+  # Marker selection. These are the knobs the old iHS rule hardcoded.
+  min_callrate:      0.9    # per-group call rate, computed WITHIN the group
+  min_maf:           0      # MAF floor on the POOLED pair; 0 = polymorphic only
+  max_het_rate:      0.1    # drop het-rich sites (mapping artefacts in a haploid)
+  ihs_min_maf:       0.05   # MAF floor for the within-group iHS scans only
+  min_group_n:       5      # refuse to scan a group smaller than this
+  ihs_threshold:     4      # NOTE: with pval=TRUE this is a -log10(p) threshold,
+                            # i.e. 4 means p < 1e-4 — NOT |statistic| >= 4
   ihs_p_threshold:   0.0001
   window_size_bp:    10000
   window_overlap_bp: 1000

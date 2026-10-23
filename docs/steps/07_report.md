@@ -4,7 +4,7 @@
 
 - Step 8 of 8 · [index](README.md) · previous: [Stage 6 — Selection (iHS)](06_selection.md)
 - Config the TUNABLES below were resolved from: `config/cohort.example.yaml`
-- Commit: `00e58db-dirty`
+- Commit: `d6a788e-dirty`
 
 ## What this stage does
 

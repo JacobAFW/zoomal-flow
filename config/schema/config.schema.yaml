@@ -335,6 +335,45 @@ properties:
             name:            { type: string, minLength: 1 }
             case_filter:     { type: string, minLength: 1 }
             control_filter:  { type: string, minLength: 1 }
+      min_callrate:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: |
+          Per-group call-rate floor, computed WITHIN each group rather than
+          inherited from the cohort. A variant called in 90% of a 553-sample
+          cohort can be called in 40% of a 10-sample subset, which is how the
+          old iHS rule ended up scanning almost nothing.
+      min_maf:
+        type: number
+        minimum: 0
+        maximum: 0.5
+        description: |
+          MAF floor on the POOLED case+control sample. Default 0, which keeps
+          every variant polymorphic in the pool. Deliberately pooled and not
+          per-group: a site fixed in one group and variable in the other is
+          the most informative kind of site for a cross-population statistic,
+          and a per-group floor deletes exactly those.
+      max_het_rate:
+        type: number
+        minimum: 0
+        maximum: 1
+        description: |
+          Drop a variant whose heterozygous-call rate exceeds this within
+          either group. In a haploid organism with monoclonal isolates a
+          het-rich site is a mapping artefact.
+      ihs_min_maf:
+        type: number
+        minimum: 0
+        maximum: 0.5
+        description: MAF floor for the within-group iHS scans only.
+      min_group_n:
+        type: integer
+        minimum: 2
+        description: |
+          Floor on case and control group size. Below this the scan aborts
+          with a message rather than producing haplotype statistics nobody
+          should read.
       ihs_threshold:     { type: number }
       ihs_p_threshold:   { type: number, minimum: 0, maximum: 1 }
       window_size_bp:    { type: integer, minimum: 1 }

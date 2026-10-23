@@ -636,22 +636,38 @@ if (length(SELECTION_MODELS) == 0) {
        "case/control contrast, which is a cohort-specific hypothesis — add a model with ",
        "`case_filter` and `control_filter` expressions to enable it.")
 } else {
-  md("The **integrated haplotype score** (iHS) looks for alleles that rose in frequency ",
-     "fast enough to carry an unusually long haplotype with them — the signature of ",
-     "recent positive selection. One scan is run per contrast.")
+  md("Each contrast is tested with **XP-EHH** and **Rsb**, cross-population ",
+     "statistics that compare integrated haplotype homozygosity between the two ",
+     "groups; a within-population **iHS** scan is reported per group alongside, ",
+     "because iHS is a legitimate statistic but cannot test a two-group contrast.")
+  note("**Read the verdict column before the candidate count.** These statistics ",
+       "are standardised to mean 0 and SD 1 across the markers in the scan and ",
+       "their p-values assume a normal. When two groups are similar that ",
+       "standardisation denominator collapses and trivial differences become ",
+       "extreme z-scores, so a weakly-differentiated contrast can return hundreds ",
+       "of \"candidate regions\" that are artefacts rather than signal. A count ",
+       "whose verdict reads DEGENERATE means nothing, ",
+       "and one that reads FLAT is a negative result rather than a missing output.")
   for (m in SELECTION_MODELS) {
     nm <- m$name
     md("### ", nm)
     md("Cases: `", m$case_filter, "` · Controls: `", m$control_filter, "`")
+
     got <- FALSE
-    for (a in ARMS)
-      if (emit_tbl(out("selection", a, nm, "ihs_extreme_windows.tsv"),
-                   paste0("Candidate windows — ", ARM_LABEL[[a]]), n = 15)) got <- TRUE
-    local({
-      n <- nm
-      if (emit_fig_arms(function(a) fig(a, paste0("ihs_", n, ".png")),
-                        paste0("iHS scan — ", n))) got <<- TRUE
-    })
+    for (a in ARMS) {
+      sm <- read_tsv_safe(out("selection", a, nm, "scan_summary.tsv"))
+      if (is.null(sm) || nrow(sm) == 0) next
+      got <- TRUE
+      md("**", ARM_LABEL[[a]], "** — ", fmt(sm$n_case[1]), " case / ",
+         fmt(sm$n_control[1]), " control genomes; ",
+         fmt(sm$markers_scanned[1]), " of ", fmt(sm$source_variants[1]),
+         " post-QC variants entered the scan.")
+      keep <- intersect(c("statistic", "markers", "candidate_regions",
+                          "kurtosis", "max_abs_z", "expected_max", "verdict"),
+                        names(sm))
+      emit_df(sm[, keep, drop = FALSE],
+              caption = paste0("Scan result — ", ARM_LABEL[[a]]))
+    }
     if (!got) md("No output was produced for this model.")
   }
 }

@@ -48,8 +48,8 @@ def _declon_inputs(wildcards):
                 out += [f"{PATHS['outputs']}/moi/{ss}/fws_by_geography.tsv"]
         elif stage == "selection":
             for m in SELECTION_MODELS:
-                out += [f"{PATHS['outputs']}/selection/{ss}/{m}/candidate_regions_iHS.tsv",
-                        f"{PATHS['outputs']}/selection/{ss}/{m}/ihs_table.tsv"]
+                out += [f"{PATHS['outputs']}/selection/{ss}/{m}/scan_summary.tsv",
+                        f"{PATHS['outputs']}/selection/{ss}/{m}/candidate_regions_XPEHH.tsv"]
     return out
 
 

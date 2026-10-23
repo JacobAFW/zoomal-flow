@@ -4,7 +4,7 @@
 
 - Step 3 of 8 · [index](README.md) · previous: [Stage 1 — QC](01_qc.md) · next: [Stage 3 — Population structure](03_structure.md)
 - Config the TUNABLES below were resolved from: `config/cohort.example.yaml`
-- Commit: `00e58db-dirty`
+- Commit: `d6a788e-dirty`
 
 ## What this stage does
 
